@@ -21,25 +21,35 @@ const LOG_COLS = ['時刻 (JST)', '変更前', '変更後', '端末', 'id', '食
 const STATUS_JA = { ordered: '受付済', made: '調理完了', delivered: '運搬完了', completed: '注文完了', cancelled: '取消' };
 
 function doPost(e) {
-  const body = JSON.parse(e.postData.contents);
-  if (body.secret !== SECRET) return reply({ ok: false, error: 'bad_secret' });
-
-  const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  // Any problem is reported back as {ok:false, error}, which the server shows on the /admin backup card.
+  let lock;
   try {
+    const body = JSON.parse(e.postData.contents);
+    if (body.secret !== SECRET) return reply({ ok: false, error: 'bad_secret: SECRET と SHEETS_SECRET が一致しません' });
+
     const ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (!ss) {
+      return reply({ ok: false, error: 'not_bound: スプレッドシートの「拡張機能 → Apps Script」から作成したスクリプトに貼り付けてください' });
+    }
+    lock = LockService.getScriptLock();
+    lock.waitLock(30000);
     writeOrders(ss, body.items || []);
     writeLog(ss, body.items || []);
     if (body.config) writeSettings(ss, body.config);
     return reply({ ok: true, received: (body.items || []).length });
+  } catch (err) {
+    return reply({ ok: false, error: 'script_error: ' + err });
   } finally {
-    lock.releaseLock();
+    if (lock) lock.releaseLock();
   }
 }
 
 // Opening the URL in a browser shows this — handy to check the deployment works.
+// It also says which spreadsheet the script writes to.
 function doGet() {
-  return reply({ ok: true, service: 'wataame-backup' });
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  return reply({ ok: true, service: 'wataame-backup', spreadsheet: ss ? ss.getName() : null,
+    note: ss ? undefined : 'not_bound: スプレッドシートの「拡張機能 → Apps Script」から作成してください' });
 }
 
 function writeOrders(ss, items) {

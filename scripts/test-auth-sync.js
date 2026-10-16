@@ -12,10 +12,15 @@ const dir = mkdtempSync(path.join(os.tmpdir(), 'wataame-auth-'));
 
 // --- Fake Apps Script web app ------------------------------------------------
 let sheetsUp = true;
+let sheetsHtml = false; // reply like a spreadsheet page instead of the script (wrong URL configured)
 const received = [];
 const fake = http.createServer(async (req, res) => {
   let raw = '';
   for await (const c of req) raw += c;
+  if (sheetsHtml) {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    return res.end('<html><head><title>わたあめ 注文履歴 - Google スプレッドシート</title></head><body>…</body></html>');
+  }
   if (!sheetsUp) {
     res.writeHead(503);
     return res.end('down');
@@ -209,6 +214,29 @@ try {
     assert.equal(r.status, 400);
     const after = (await (await req(B, '/api/orders?day=1')).json()).orders.length;
     assert.equal(after, before);
+  });
+
+  await test('a non-script reply (e.g. the spreadsheet URL) shows a clear reason in the backup status', async () => {
+    sheetsHtml = true;
+    await req(A, '/api/orders', { method: 'POST', body: { product: 'A', device: 't' } });
+    const ok = await until(async () => (await (await req(A, '/api/state')).json()).sync.lastError, 70_000);
+    assert.ok(ok, 'no error reported');
+    const { sync } = await (await req(A, '/api/state')).json();
+    assert.match(sync.lastError, /Apps Script/);
+    assert.match(sync.lastError, /Google スプレッドシート/);
+    sheetsHtml = false;
+    await until(async () => (await (await req(A, '/api/state')).json()).sync.pending === 0, 70_000);
+  });
+
+  await test('「全件を送信」 queues every order and delivers them all', async () => {
+    received.length = 0;
+    const r = await req(A, '/api/backup-resend', { method: 'POST', body: {} });
+    assert.equal(r.status, 200);
+    const { queued } = await r.json();
+    const total = (await (await req(A, '/api/export.csv')).text()).trim().split('\n').length - 1;
+    assert.equal(queued, total);
+    const ok = await until(() => new Set(received.map((it) => it.order.id)).size === total, 70_000);
+    assert.ok(ok, `sheet received ${new Set(received.map((it) => it.order.id)).size} of ${total}`);
   });
 
   await test('10 wrong passcodes lock that address out', async () => {

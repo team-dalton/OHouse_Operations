@@ -428,6 +428,22 @@ let syncDelay = 3000;
 
 // Sends queued changes in batches. On failure it backs off (up to 1 min) and retries; the queue stays in the
 // database, so an internet outage or a restart only delays the backup.
+// The <title> (or first text) of an HTML reply, kept short for the /admin status card.
+function describeHtml(text) {
+  const title = text.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1];
+  return (title || text.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim().slice(0, 120) || 'empty reply';
+}
+
+function sheetsHint(text) {
+  if (!/script\.google(usercontent)?\.com\/macros/.test(SHEETS_URL)) {
+    return 'SHEETS_WEBHOOK_URL が Apps Script の /exec URL ではありません';
+  }
+  if (/accounts\.google\.com|ServiceLogin|サインイン|Sign in/i.test(text)) {
+    return 'Apps Script のアクセスが「全員 (Anyone)」になっていません';
+  }
+  return 'Apps Script からの応答が読めません（デプロイを確認してください）';
+}
+
 async function flushSync() {
   const rows = db.prepare(`SELECT id, payload FROM sync_outbox ORDER BY id LIMIT 200`).all();
   if (!rows.length) return;
@@ -439,7 +455,15 @@ async function flushSync() {
       redirect: 'follow', // Apps Script answers via a redirect
       signal: AbortSignal.timeout(20_000),
     });
-    const body = await res.json().catch(() => ({}));
+    const text = await res.text();
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      // Not our script's JSON reply: usually the spreadsheet's own URL was used instead of the /exec URL,
+      // or Google returned an error/sign-in page. Show what came back so /admin can say what is wrong.
+      throw new Error(`${sheetsHint(text)} (HTTP ${res.status}: ${describeHtml(text)})`);
+    }
     if (!res.ok || !body.ok) throw new Error(body.error || `HTTP ${res.status}`);
     db.prepare(`DELETE FROM sync_outbox WHERE id <= ?`).run(rows.at(-1).id);
     syncStatus.lastOkAt = Date.now();
@@ -683,6 +707,18 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === 'GET' && pathname === '/api/backup-info') return json(res, 200, { sheetUrl: SHEETS_VIEW_URL });
+
+  // Queue every order for the sheet — for orders created before the backup was set up, or a fresh sheet.
+  if (req.method === 'POST' && pathname === '/api/backup-resend') {
+    if (!SHEETS_URL) throw new HttpError(409, 'sheets_not_configured');
+    const all = db.prepare(`SELECT * FROM orders ORDER BY id`).all();
+    db.exec('BEGIN');
+    for (const order of all) enqueueSync.run(JSON.stringify({ order }));
+    db.exec('COMMIT');
+    syncDelay = 0; // send right away instead of waiting out a back-off
+    broadcast();
+    return json(res, 200, { queued: all.length });
+  }
 
   if (req.method === 'GET' && pathname === '/api/stats') {
     const day = Number(url.searchParams.get('day')) || getConfig().day;

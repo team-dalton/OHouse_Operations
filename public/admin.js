@@ -165,8 +165,19 @@ function renderSync(sync = lastSync) {
       ${sync.lastError ? `<span>エラー</span><b style="white-space:normal;font-weight:500">${esc(sync.lastError)}</b>` : ''}
     </div>
     <p class="hint" style="margin-top:10px">送信できない間も変更はサーバーに保存され、つながり次第まとめて送信されます。</p>
+    <button class="btn wide sheet-link" type="button" data-action="resend"
+      style="background:var(--ink);box-shadow:none">全件をスプレッドシートに送信</button>
     ${link}`;
 }
+
+// Re-sends every order, e.g. orders that existed before the backup was set up, or after switching to a new sheet.
+document.getElementById('sync').addEventListener('click', async (e) => {
+  if (!e.target.closest('[data-action=resend]')) return;
+  if (!confirm('すべての注文をスプレッドシートに送り直します。よろしいですか？')) return;
+  const r = await post('/api/backup-resend', {});
+  if (r.ok) toast(`${r.data.queued}件を送信待ちにしました`);
+  else toast(errorMessage(r), { kind: 'error' });
+});
 
 // --- Restore (import) ------------------------------------------------------
 
