@@ -62,6 +62,7 @@ passcode, Google Sheets backup queue, and restore. If the server has a passcode,
 | `STAFF_PASSCODE` | *(off)* | Staff passcode. When set, every page except `/display` needs it. **Required when hosted online.** |
 | `SHEETS_WEBHOOK_URL` | *(off)* | Google Apps Script web app URL for the backup sheet. |
 | `SHEETS_SECRET` | | Must match `SECRET` in `google-sheets/Code.gs`. |
+| `SHEETS_VIEW_URL` | *(off)* | The backup spreadsheet's own link (`https://docs.google.com/spreadsheets/d/…`). Shows a 「スプレッドシートを開く」 button in `/admin` (staff only). |
 
 ## Staff passcode
 

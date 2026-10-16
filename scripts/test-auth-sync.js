@@ -36,6 +36,7 @@ function startServer(port, dbName) {
     env: {
       ...process.env, PORT: String(port), DB_PATH: path.join(dir, dbName), STAFF_PASSCODE: PASSCODE,
       SHEETS_WEBHOOK_URL: 'http://localhost:3997/exec', SHEETS_SECRET: 'sheet-secret',
+      SHEETS_VIEW_URL: 'https://docs.google.com/spreadsheets/d/test-sheet/edit',
     },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
@@ -113,6 +114,19 @@ try {
     const o = await req(A, '/api/orders', { method: 'POST', body: { product: 'A', device: 't' } });
     assert.equal(o.status, 201);
     assert.equal((await req(A, '/server')).status, 200);
+  });
+
+  await test('spreadsheet link is only given to signed-in staff, never in the public feed', async () => {
+    assert.equal((await req(A, '/api/backup-info', { auth: false })).status, 401);
+    const info = await (await req(A, '/api/backup-info')).json();
+    assert.equal(info.sheetUrl, 'https://docs.google.com/spreadsheets/d/test-sheet/edit');
+    const ctrl = new AbortController();
+    const r = await fetch(`${A}/api/events?role=display`, { signal: ctrl.signal });
+    const reader = r.body.getReader();
+    let feed = '';
+    while (!feed.includes('event: state')) feed += new TextDecoder().decode((await reader.read()).value);
+    ctrl.abort();
+    assert.ok(!feed.includes('test-sheet'), 'sheet URL leaked into the public live feed');
   });
 
   await test('scripts can use the X-Passcode header', async () => {

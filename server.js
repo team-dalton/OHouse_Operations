@@ -24,6 +24,9 @@ const AUTH_COOKIE = 'wataame_auth';
 // Google Sheets backup (optional): every order change is POSTed to an Apps Script web app.
 const SHEETS_URL = process.env.SHEETS_WEBHOOK_URL || '';
 const SHEETS_SECRET = process.env.SHEETS_SECRET || '';
+// Optional link to the backup spreadsheet itself, shown in /admin so it can be found quickly during a restore.
+// Served only to signed-in staff (never in the public live feed, which the customer display also reads).
+const SHEETS_VIEW_URL = /^https:\/\//.test(process.env.SHEETS_VIEW_URL || '') ? process.env.SHEETS_VIEW_URL : '';
 
 // Each start gets a new id; screens reload themselves when it changes so they always match the server.
 const BOOT_ID = `${Date.now().toString(36)}-${process.pid}`;
@@ -678,6 +681,8 @@ async function handleApi(req, res, url) {
     const rows = db.prepare(`SELECT * FROM orders WHERE day = ? ORDER BY id DESC`).all(day);
     return json(res, 200, { orders: rows });
   }
+
+  if (req.method === 'GET' && pathname === '/api/backup-info') return json(res, 200, { sheetUrl: SHEETS_VIEW_URL });
 
   if (req.method === 'GET' && pathname === '/api/stats') {
     const day = Number(url.searchParams.get('day')) || getConfig().day;

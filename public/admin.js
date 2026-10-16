@@ -79,6 +79,10 @@ function renderDevices(s) {
 async function refresh() {
   const day = state.config.day;
   const [o, st] = await Promise.all([getJSON(`/api/orders?day=${day}`), getJSON(`/api/stats?day=${day}`)]);
+  if (sheetUrl === null) {
+    sheetUrl = (await getJSON('/api/backup-info')).sheetUrl || '';
+    renderSync();
+  }
   orders = o.orders;
   renderOrders();
   renderStats(st);
@@ -138,11 +142,18 @@ function renderStats(st) {
 
 // --- Google Sheets backup status -------------------------------------------
 
-function renderSync(sync) {
+let lastSync = null;
+let sheetUrl = null; // null = not fetched yet; '' = SHEETS_VIEW_URL not set
+
+function renderSync(sync = lastSync) {
+  lastSync = sync;
   const el = document.getElementById('sync');
+  const link = sheetUrl
+    ? `<a class="btn wide sheet-link" href="${esc(sheetUrl)}" target="_blank" rel="noopener">スプレッドシートを開く ↗</a>`
+    : '';
   if (!sync?.enabled) {
     el.innerHTML = `<p class="empty-note">未設定です。README の「Google スプレッドシート バックアップ」の手順で
-      SHEETS_WEBHOOK_URL を設定すると、すべての注文が自動で記録されます。</p>`;
+      SHEETS_WEBHOOK_URL を設定すると、すべての注文が自動で記録されます。</p>${link}`;
     return;
   }
   const healthy = !sync.lastError;
@@ -153,7 +164,8 @@ function renderSync(sync) {
       <span>最終送信</span><b>${sync.lastOkAt ? t(sync.lastOkAt) : '—'}</b>
       ${sync.lastError ? `<span>エラー</span><b style="white-space:normal;font-weight:500">${esc(sync.lastError)}</b>` : ''}
     </div>
-    <p class="hint" style="margin-top:10px">送信できない間も変更はサーバーに保存され、つながり次第まとめて送信されます。</p>`;
+    <p class="hint" style="margin-top:10px">送信できない間も変更はサーバーに保存され、つながり次第まとめて送信されます。</p>
+    ${link}`;
 }
 
 // --- Restore (import) ------------------------------------------------------
