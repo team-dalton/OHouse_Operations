@@ -51,11 +51,14 @@ h1, h2, h3 { margin: 0; letter-spacing: -.01em; }
   border-bottom: 1px solid var(--line);
 }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); }
-.brand img { width: 34px; height: 34px; display: block; }
-.topbar h1 { font-size: 20px; font-weight: 800; }
+.brand img { width: 38px; height: 38px; display: block; }
+/* The Candy Cloud logo, wherever it appears: rounded like the rest of the UI */
+img[src="/logo.jpg"] { border-radius: 22%; object-fit: cover; }
+.topbar h1 { font-size: 20px; font-weight: 800; white-space: nowrap; }
 .topbar h1 em { font-style: normal; color: var(--red); }
 .topbar .role {
   background: var(--ink); color: #fff; padding: 5px 14px; border-radius: 999px; font-size: 13px; font-weight: 700;
+  white-space: nowrap;
 }
 .topbar .spacer { flex: 1; }
 .topbar small { color: var(--muted); }
@@ -82,8 +85,9 @@ main.split {
 @media (max-width: 760px) {
   main.split { grid-template-columns: 1fr; height: auto; padding: 12px; }
   .pane.actions { order: -1; } /* phone: actions first, progress below */
-  .topbar { padding: 0 14px; }
+  .topbar { padding: 0 14px; gap: 8px; }
   .topbar small { display: none; }
+  .topbar h1 { font-size: 17px; }
 }
 
 /* ---------- Left: progress list ---------- */
@@ -240,7 +244,7 @@ main.split {
 }
 .start-overlay > div::before {
   content: ""; display: block; width: 84px; height: 84px; margin: 0 auto 22px;
-  background: url(/logo.svg) center / contain no-repeat;
+  background: url(/logo.jpg) center / cover no-repeat; border-radius: 22px;
 }
 .start-overlay h1 { font-size: 32px; font-weight: 900; margin-bottom: 14px; }
 .start-overlay p {

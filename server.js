@@ -1,4 +1,4 @@
-// わたあめ注文管理 — single-process server.
+// Candy Cloud 注文管理 (cotton candy orders) — single-process server.
 // Zero dependencies: node:http for the API, Server-Sent Events for live push, node:sqlite for storage.
 
 import http from 'node:http';
@@ -630,7 +630,10 @@ async function handleLogin(req, res) {
   });
   res.end(JSON.stringify({ ok: true }));
 }
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' };
+const MIME = {
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
+};
 
 function json(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -780,7 +783,7 @@ async function handleStatic(req, res, url) {
   try {
     const content = await readFile(resolved);
     res.writeHead(200, {
-      'Content-Type': (MIME[path.extname(resolved)] || 'application/octet-stream') + '; charset=utf-8',
+      'Content-Type': MIME[path.extname(resolved)] || 'application/octet-stream',
       'Cache-Control': 'no-cache',
     });
     res.end(content);
@@ -812,7 +815,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n  わたあめ注文管理 running\n`);
+  console.log(`\n  Candy Cloud 注文管理 running\n`);
   console.log(`  This machine : http://localhost:${PORT}`);
   for (const u of lanUrls()) console.log(`  Other devices: ${u}`);
   console.log(`\n  Pages: /server  /cook  /carrier  /display  /admin`);

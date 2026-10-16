@@ -9,7 +9,7 @@ const device = deviceName(role);
 const left = document.getElementById('left');
 const right = document.getElementById('right');
 
-document.title = `わたあめ — ${ROLE_LABEL[role]}`;
+document.title = `Candy Cloud — ${ROLE_LABEL[role]}`;
 document.getElementById('role-label').textContent = ROLE_LABEL[role];
 document.getElementById('device-label').textContent = device;
 

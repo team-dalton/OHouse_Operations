@@ -1,4 +1,4 @@
-# わたあめ注文管理 (Cotton candy order tracker)
+# Candy Cloud 注文管理 (Cotton candy order tracker)
 
 School-festival order flow for staff devices + a customer display. Runs on a local Wi-Fi network, or hosted
 online (e.g. Railway) with a staff passcode. No install beyond Node.js.
@@ -75,7 +75,7 @@ every device. 10 wrong attempts lock that network address out for 10 minutes. `/
 Every order change is sent to a Google Sheet. Changes are queued in the database first, so an internet outage or
 a restart only delays the backup — nothing is lost. `/admin` shows the backup status and how many changes are waiting.
 
-1. Create a new Google Sheet (e.g. 「わたあめ 注文履歴」) in the account that should own the data.
+1. Create a new Google Sheet (e.g. 「Candy Cloud 注文履歴」) in the account that should own the data.
 2. **Extensions → Apps Script**. Replace the code with `google-sheets/Code.gs` from this repo.
 3. In that code, change `SECRET` to a long random text. Save.
 4. **Deploy → New deployment** → type **Web app** → Execute as **Me** → Who has access **Anyone** → Deploy →
