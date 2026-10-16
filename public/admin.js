@@ -166,7 +166,7 @@ function renderSync(sync = lastSync) {
     </div>
     <p class="hint" style="margin-top:10px">送信できない間も変更はサーバーに保存され、つながり次第まとめて送信されます。</p>
     <button class="btn wide sheet-link" type="button" data-action="resend"
-      style="background:var(--ink);box-shadow:none">全件をスプレッドシートに送信</button>
+      style="background:var(--ink);box-shadow:none">スプレッドシートに送信</button>
     ${link}`;
 }
 
