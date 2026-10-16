@@ -1,0 +1,222 @@
+// Host / admin screen: settings, stats, device list, and manual override of any order.
+import {
+  ROLE_LABEL, STATUS_LABEL, connect, errorMessage, esc, getJSON, pad, post, toast, transition,
+} from './common.js';
+
+const form = document.getElementById('settings');
+const ordersEl = document.getElementById('orders');
+const statsEl = document.getElementById('stats');
+let state = null;
+let orders = [];
+let formDirty = false;
+let refreshTimer;
+
+form.addEventListener('input', () => (formDirty = true));
+
+connect({
+  role: 'admin',
+  name: 'admin',
+  onState: (s) => {
+    state = s;
+    if (!formDirty) fillForm(s.config);
+    renderDevices(s);
+    renderSync(s.sync);
+    document.getElementById('logout').hidden = !s.auth;
+    // Debounce the heavier queries.
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(refresh, 300);
+  },
+});
+
+function fillForm(cfg) {
+  const keys = Object.keys(cfg.products);
+  const fields = document.getElementById('product-fields');
+  if (fields.dataset.keys !== keys.join()) {
+    fields.dataset.keys = keys.join();
+    fields.innerHTML = keys.map((k) => `
+      <label>トッピング${k} 名前 <input type="text" name="name${k}"></label>
+      <label>トッピング${k} 売り切れ <input type="checkbox" name="soldOut${k}"></label>`).join('');
+  }
+  for (const k of keys) {
+    form[`name${k}`].value = cfg.products[k].name;
+    form[`soldOut${k}`].checked = cfg.products[k].soldOut;
+  }
+  form.day.value = cfg.day;
+  form.nextTicket.value = cfg.nextTicket;
+  form.backlogCount.value = cfg.backlogCount;
+  form.backlogMinutes.value = cfg.backlogMinutes;
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const r = await post('/api/settings', {
+    products: Object.fromEntries(Object.keys(state.config.products).map((k) =>
+      [k, { name: form[`name${k}`].value, soldOut: form[`soldOut${k}`].checked }])),
+    day: form.day.value,
+    nextTicket: form.nextTicket.value,
+    backlogCount: form.backlogCount.value,
+    backlogMinutes: form.backlogMinutes.value,
+  });
+  if (r.ok) {
+    formDirty = false;
+    toast('保存しました');
+  } else {
+    toast(errorMessage(r), { kind: 'error' });
+  }
+});
+
+function renderDevices(s) {
+  document.getElementById('devices').innerHTML =
+    s.devices
+      .map((d) => `<div class="dev"><span>${esc(ROLE_LABEL[d.role] ?? d.role)}</span><small>${esc(d.name)}</small></div>`)
+      .join('') || '<p class="empty-note">なし</p>';
+  const base = s.lan?.[0] ?? location.origin;
+  document.getElementById('links').innerHTML = ['server', 'cook', 'carrier', 'display']
+    .map((p) => `<a href="/${p}" target="_blank">${ROLE_LABEL[p]}</a>`)
+    .join('') + `<p style="margin:4px 0 10px;color:var(--muted);font-size:13px">他の端末からは <b>${esc(base)}</b>/server など</p>`;
+}
+
+async function refresh() {
+  const day = state.config.day;
+  const [o, st] = await Promise.all([getJSON(`/api/orders?day=${day}`), getJSON(`/api/stats?day=${day}`)]);
+  orders = o.orders;
+  renderOrders();
+  renderStats(st);
+}
+
+const t = (ms) => (ms ? new Date(ms).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '');
+const mins = (ms) => (ms == null ? '—' : `${(ms / 60000).toFixed(1)}分`);
+
+function renderOrders() {
+  const products = state.config.products;
+  ordersEl.innerHTML = `
+    <tr><th>食券</th><th>商品</th><th>ステータス</th><th>受付</th><th>調理完了</th><th>運搬完了</th><th>注文完了</th><th>最終操作</th></tr>
+    ${orders.map((o) => `
+      <tr class="${o.status}">
+        <td><b>${o.ticket_no == null ? '予備' : `#${pad(o.ticket_no)}`}</b>${o.is_spare && o.ticket_no != null ? ' <small>(予備使用)</small>' : ''}</td>
+        <td>${o.product ? `<span class="chip p${esc(o.product)}">${esc(products[o.product]?.name ?? o.product)}</span>` : '<span class="chip spare">注文なし</span>'}</td>
+        <td><select data-id="${o.id}">${Object.entries(STATUS_LABEL)
+          .map(([k, v]) => `<option value="${k}" ${k === o.status ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
+        <td>${t(o.created_at)}</td><td>${t(o.made_at)}</td><td>${t(o.delivered_at)}</td><td>${t(o.completed_at)}</td>
+        <td><small>${esc(o.updated_by ?? '')}</small></td>
+      </tr>`).join('')}`;
+}
+
+ordersEl.addEventListener('change', async (e) => {
+  const sel = e.target.closest('select[data-id]');
+  if (!sel) return;
+  const order = orders.find((o) => o.id === Number(sel.dataset.id));
+  const r = await transition(order, sel.value, 'admin');
+  if (r.ok) toast(`${order.ticket_no == null ? '予備' : `#${pad(order.ticket_no)}`} → ${STATUS_LABEL[sel.value]}`);
+  else toast(errorMessage(r), { kind: 'error' });
+  refresh();
+});
+
+function renderStats(st) {
+  document.getElementById('stats-day').textContent = st.day;
+  const count = (pred) => st.byStatus.filter(pred).reduce((a, r) => a + r.n, 0);
+  const sold = (p) => count((r) => r.product === p && r.status !== 'cancelled');
+  const maxHour = Math.max(1, ...st.hourly.map((h) => h.n));
+  const { products } = state.config;
+
+  statsEl.innerHTML = `
+    <div class="kv">
+      ${Object.entries(products).map(([k, p]) => `<span>${esc(p.name)}</span><b>${sold(k)}</b>`).join('')}
+      <span>注文完了</span><b>${count((r) => r.status === 'completed')}</b>
+      <span>取消</span><b>${count((r) => r.product && r.status === 'cancelled')}</b>
+      <span>予備 作成 / 使用</span><b>${st.spares.made} / ${st.spares.used}</b>
+      <span>平均 調理</span><b>${mins(st.avg.cook_ms)}</b>
+      <span>平均 運搬</span><b>${mins(st.avg.carry_ms)}</b>
+      <span>平均 受渡待ち</span><b>${mins(st.avg.handoff_ms)}</b>
+      <span>平均 合計</span><b>${mins(st.avg.total_ms)}</b>
+    </div>
+    <h3 style="font-size:14px;color:var(--muted);margin:14px 0 6px">時間帯別の注文数</h3>
+    ${st.hourly.map((h) => `
+      <div class="hbar"><span>${h.hour}時</span><div style="width:${(h.n / maxHour) * 100}%"></div><span>${h.n}</span></div>`).join('')
+      || '<p class="empty-note">まだ注文がありません</p>'}`;
+}
+
+// --- Google Sheets backup status -------------------------------------------
+
+function renderSync(sync) {
+  const el = document.getElementById('sync');
+  if (!sync?.enabled) {
+    el.innerHTML = `<p class="empty-note">未設定です。README の「Google スプレッドシート バックアップ」の手順で
+      SHEETS_WEBHOOK_URL を設定すると、すべての注文が自動で記録されます。</p>`;
+    return;
+  }
+  const healthy = !sync.lastError;
+  el.innerHTML = `
+    <div class="kv">
+      <span>状態</span><b class="${healthy ? 'sync-ok' : 'sync-bad'}">${healthy ? '● 正常' : '● 送信できていません'}</b>
+      <span>送信待ち</span><b>${sync.pending}件</b>
+      <span>最終送信</span><b>${sync.lastOkAt ? t(sync.lastOkAt) : '—'}</b>
+      ${sync.lastError ? `<span>エラー</span><b style="white-space:normal;font-weight:500">${esc(sync.lastError)}</b>` : ''}
+    </div>
+    <p class="hint" style="margin-top:10px">送信できない間も変更はサーバーに保存され、つながり次第まとめて送信されます。</p>`;
+}
+
+// --- Restore (import) ------------------------------------------------------
+
+// Minimal RFC 4180 CSV reader: quoted fields, escaped quotes, CRLF, BOM.
+function parseCSV(text) {
+  text = text.replace(/^﻿/, '');
+  const rows = [];
+  let row = [];
+  let field = '';
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
+      else if (c === '"') quoted = false;
+      else field += c;
+    } else if (c === '"') quoted = true;
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(field); rows.push(row); row = []; field = '';
+    } else field += c;
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  const [header = [], ...data] = rows.filter((r) => r.some((v) => v.trim() !== ''));
+  const keys = header.map((h) => h.trim());
+  return data.map((r) => Object.fromEntries(keys.map((k, i) => [k, r[i] ?? ''])));
+}
+
+const importFile = document.getElementById('import-file');
+const importText = document.getElementById('import-text');
+
+importFile.addEventListener('change', async () => {
+  const file = importFile.files[0];
+  if (file) importText.value = await file.text();
+});
+
+document.getElementById('import-btn').addEventListener('click', async () => {
+  const rows = parseCSV(importText.value);
+  if (!rows.length || !('id' in rows[0]) || !('status' in rows[0])) {
+    return toast('CSV が読み込めません（id・status の列が必要です）', { kind: 'error' });
+  }
+  const mode = document.querySelector('input[name=import-mode]:checked').value;
+  const inProgress = rows.filter((r) => ['ordered', 'made', 'delivered'].includes(r.status)).length;
+  const message = `${rows.length}件の注文を${mode === 'replace' ? '「すべて置き換え」で' : ''}復元します（うち進行中 ${inProgress}件）。`
+    + (mode === 'replace' ? '\n\n⚠ 今サーバーにある注文はすべて削除されます。' : '')
+    + '\n\nよろしいですか？';
+  if (!confirm(message)) return;
+
+  const r = await post('/api/import', { rows, mode });
+  if (r.ok) {
+    toast(`${r.data.imported}件を復元しました`);
+    importText.value = '';
+    importFile.value = '';
+    refresh();
+  } else {
+    const d = r.data;
+    toast(d.line ? `${d.line}行目の ${d.field} が読み込めません` : errorMessage(r), { kind: 'error', ms: 8000 });
+  }
+});
+
+document.getElementById('logout').addEventListener('click', async () => {
+  await post('/api/logout', {});
+  location.href = '/login';
+});

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>わたあめ ログイン</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="icon" href="/logo.svg" type="image/svg+xml">
+  <style>
+    html, body { height: 100%; }
+    body { display: grid; place-items: center; padding: 16px; }
+    .login { width: min(420px, 100%); background: var(--panel); border-radius: var(--radius); padding: 32px 28px; box-shadow: var(--shadow); text-align: center; }
+    .login img { width: 72px; height: 72px; }
+    .login h1 { font-size: 26px; font-weight: 900; margin: 14px 0 6px; }
+    .login h1 em { font-style: normal; color: var(--red); }
+    .login p { color: var(--muted); margin: 0 0 22px; }
+    .login input {
+      width: 100%; font: inherit; font-size: 22px; text-align: center; letter-spacing: .1em;
+      padding: 14px 18px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--bg);
+    }
+    .login input:focus { outline: 2px solid var(--red); outline-offset: 1px; }
+    .login .btn { margin-top: 14px; }
+    .login .error { color: var(--red); font-weight: 700; min-height: 1.5em; margin: 12px 0 0; }
+  </style>
+</head>
+<body>
+  <form class="login" id="form">
+    <img src="/logo.svg" alt="">
+    <h1>わたあめ<em>.</em> スタッフ</h1>
+    <p>スタッフ用パスコードを入力してください</p>
+    <input id="passcode" type="password" autocomplete="current-password" autofocus required>
+    <button class="btn wide" type="submit">ログイン</button>
+    <p class="error" id="error"></p>
+  </form>
+  <script>
+    const form = document.getElementById('form');
+    const error = document.getElementById('error');
+    // Only allow redirects back to this site's own pages.
+    const next = new URLSearchParams(location.search).get('next');
+    const target = next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      error.textContent = '';
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ passcode: document.getElementById('passcode').value }),
+      }).catch(() => null);
+      if (res?.ok) return location.replace(target);
+      const data = await res?.json().catch(() => ({}));
+      error.textContent = !res ? '通信エラー — 接続を確認してください'
+        : data?.error === 'too_many_attempts' ? '試行回数が多すぎます。10分後にもう一度お試しください'
+        : 'パスコードが違います';
+    });
+  </script>
+</body>
+</html>

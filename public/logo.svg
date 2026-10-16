@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="わたあめ">
+  <rect width="64" height="64" rx="18" fill="#e1182c"/>
+  <!-- stick -->
+  <rect x="30" y="34" width="4" height="22" rx="2" fill="#ffffff" opacity=".85"/>
+  <!-- cotton candy cloud -->
+  <g fill="#ffffff">
+    <circle cx="32" cy="24" r="13"/>
+    <circle cx="21" cy="29" r="9"/>
+    <circle cx="43" cy="29" r="9"/>
+    <circle cx="25" cy="17" r="8"/>
+    <circle cx="39" cy="17" r="8"/>
+  </g>
+  <!-- swirl -->
+  <path d="M26 25c2-5 10-5 12 0s-6 7-8 3" fill="none" stroke="#e1182c" stroke-width="2.4" stroke-linecap="round" opacity=".35"/>
+</svg>

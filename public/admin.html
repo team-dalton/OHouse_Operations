@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>わたあめ 管理</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="icon" href="/logo.svg" type="image/svg+xml">
+  <style>
+    html, body { height: auto; }
+    .admin { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; padding: 16px; }
+    .admin .pane h2 { font-size: 17px; font-weight: 800; margin-bottom: 12px; }
+    .wide { grid-column: 1 / -1; }
+    form label { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
+    form input[type=checkbox] { accent-color: var(--red); width: 20px; height: 20px; }
+    form input[type=text], form input[type=number] { font: inherit; padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; width: 160px; background: var(--bg); }
+    form input:focus { outline: 2px solid var(--red); outline-offset: 1px; }
+    .hint { color: var(--muted); font-size: 13px; line-height: 1.6; margin: 0 0 10px; }
+    #import-file { margin-bottom: 8px; max-width: 100%; }
+    #import-text { width: 100%; font: 12px/1.4 ui-monospace, monospace; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg); resize: vertical; }
+    label.radio { display: flex; gap: 8px; align-items: center; font-size: 14px; padding: 4px 0; }
+    label.radio input { accent-color: var(--red); }
+    .sync-ok { color: #2fb344; font-weight: 800; }
+    .sync-bad { color: var(--red); font-weight: 800; }
+    .logout { background: none; border: 0; color: var(--muted); font-size: 13px; text-decoration: underline; }
+    form input[type=number] { width: 90px; }
+    form .save { margin-top: 10px; min-height: 44px; font-size: 16px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    th { color: var(--muted); font-weight: 600; }
+    td select { font: inherit; padding: 4px; border-radius: 6px; }
+    tr.cancelled { opacity: .45; }
+    .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 15px; }
+    .kv b { font-variant-numeric: tabular-nums; }
+    .hbar { display: grid; grid-template-columns: 40px 1fr 30px; gap: 8px; align-items: center; font-size: 13px; margin: 3px 0; }
+    .hbar div { height: 12px; background: var(--accent); border-radius: 999px; }
+    .links a { display: inline-block; margin: 0 10px 6px 0; color: var(--accent); font-weight: 700; }
+    .dev { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><img src="/logo.svg" alt=""><h1>わたあめ<em>.</em></h1></a>
+    <span class="role">管理</span>
+    <span class="spacer"></span>
+    <button class="logout" id="logout" hidden>ログアウト</button>
+    <span id="conn" class="conn bad">● 接続中…</span>
+  </header>
+  <main class="admin">
+    <section class="pane">
+      <h2>設定</h2>
+      <form id="settings">
+        <div id="product-fields"></div>
+        <label>営業日 (1 / 2) <input type="number" name="day" min="1" max="9"></label>
+        <label>次の食券番号 <input type="number" name="nextTicket" min="1"></label>
+        <label>混雑判定: 待ち件数 &gt; <input type="number" name="backlogCount" min="0"></label>
+        <label>混雑判定: 最古の待ち (分) &gt; <input type="number" name="backlogMinutes" min="1"></label>
+        <button class="btn wide save" type="submit">保存</button>
+      </form>
+    </section>
+    <section class="pane">
+      <h2>統計 (<span id="stats-day"></span>日目)</h2>
+      <div id="stats"></div>
+    </section>
+    <section class="pane">
+      <h2>接続中の端末</h2>
+      <div id="devices"></div>
+      <h2 style="margin-top:16px">ページ</h2>
+      <div class="links" id="links"></div>
+      <a class="btn" style="display:inline-block;text-decoration:none;font-size:16px;min-height:0;padding:10px 16px" href="/api/export.csv">CSV エクスポート</a>
+    </section>
+    <section class="pane">
+      <h2>Google スプレッドシート バックアップ</h2>
+      <div id="sync"></div>
+    </section>
+    <section class="pane">
+      <h2>データ復元 (インポート)</h2>
+      <p class="hint">スプレッドシートの <b>orders</b> シートを CSV でダウンロード（ファイル → ダウンロード → CSV）するか、
+        「CSV エクスポート」で保存したファイルを選んでください。</p>
+      <input type="file" id="import-file" accept=".csv,text/csv">
+      <textarea id="import-text" rows="4" placeholder="または CSV の中身をここに貼り付け"></textarea>
+      <label class="radio"><input type="radio" name="import-mode" value="merge" checked> 追加・更新（同じ id の注文は上書き）</label>
+      <label class="radio"><input type="radio" name="import-mode" value="replace"> すべて置き換え（今の注文をすべて削除）</label>
+      <button class="btn wide save" id="import-btn" type="button">復元する</button>
+    </section>
+    <section class="pane wide">
+      <h2>注文一覧 (本日) — ステータスを直接変更できます</h2>
+      <div style="overflow:auto"><table id="orders"></table></div>
+    </section>
+  </main>
+  <script type="module" src="/admin.js"></script>
+</body>
+</html>

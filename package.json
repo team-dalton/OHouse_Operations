@@ -1,0 +1,17 @@
+{
+  "name": "wataame-orders",
+  "version": "0.1.0",
+  "private": true,
+  "description": "School festival cotton candy order tracker (server / cook / carrier / call display)",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server.js",
+    "simulate": "node scripts/simulate.js",
+    "test:race": "node scripts/race-test.js",
+    "test:auth": "node scripts/test-auth-sync.js",
+    "test": "node scripts/race-test.js && node scripts/test-auth-sync.js"
+  }
+}

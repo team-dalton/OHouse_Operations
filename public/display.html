@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>わたあめ 呼び出し</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="icon" href="/logo.svg" type="image/svg+xml">
+  <style>
+    html, body { background: var(--bg); overflow: hidden; }
+    #system-banner { position: fixed; left: 0; right: 0; top: 0; } /* overlay; the TV layout is sized to 100vh */
+    .tv-head { display: flex; align-items: center; gap: 2vw; padding: 0 3vw; height: 12vh; }
+    .tv-head img { height: 7vh; width: 7vh; }
+    .tv-head h1 { font-size: 5vh; font-weight: 900; }
+    .tv-head h1 em { font-style: normal; color: var(--red); }
+    .tv-head .sub { font-size: 2.4vh; color: var(--muted); font-weight: 700; letter-spacing: .1em; }
+    .tv-head .clock { margin-left: auto; font-size: 4vh; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .tv-head .conn { font-size: 1.5vh; }
+
+    .tv { display: grid; grid-template-columns: 3fr 2fr; gap: 2vw; padding: 0 3vw; height: 74vh; }
+    .tv section { border-radius: 3.2vh; padding: 3vh 2.4vw; overflow: hidden; display: flex; flex-direction: column; }
+    .tv h2 { font-size: 4vh; font-weight: 900; margin-bottom: 2.4vh; display: flex; align-items: baseline; gap: 1vw; }
+    .tv h2 small { font-size: 2vh; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; opacity: .7; }
+
+    /* Ready = the red panel: the one thing customers should look for */
+    .ready { background: var(--red); color: #fff; box-shadow: 0 2vh 5vh rgba(225, 24, 44, .25); }
+    .waiting { background: var(--panel); box-shadow: var(--shadow); }
+
+    .nums { display: grid; grid-template-columns: repeat(auto-fill, minmax(18vh, 1fr)); gap: 1.8vh; align-content: start; }
+    .num {
+      background: #fff; color: var(--ink); border-radius: 2.4vh; text-align: center; font-weight: 900;
+      font-size: 8vh; padding: 1.4vh 0; font-variant-numeric: tabular-nums; letter-spacing: -.03em;
+    }
+    .num.new { animation: callout .8s ease-in-out 6; }
+    .nums.small { grid-template-columns: repeat(auto-fill, minmax(11vh, 1fr)); gap: 1.2vh; }
+    .nums.small .num { background: var(--bg); color: var(--ink-2); font-size: 4.4vh; padding: .9vh 0; border-radius: 1.8vh; }
+    .nums.small .num.made { background: var(--ink); color: #fff; }
+
+    .idle { font-size: 3.2vh; opacity: .75; margin: auto; text-align: center; line-height: 1.7; font-weight: 700; }
+    .waiting .idle { color: var(--muted); opacity: 1; }
+    .count-big { font-size: 15vh; font-weight: 900; text-align: center; margin-top: 4vh; letter-spacing: -.04em; }
+    .count-big small { display: block; font-size: 2.8vh; font-weight: 700; color: var(--muted); letter-spacing: 0; }
+    .legend { font-size: 1.9vh; color: var(--muted); margin-top: auto; padding-top: 1.5vh; font-weight: 600; }
+    .legend i { display: inline-block; width: 1.8vh; height: 1.8vh; border-radius: 50%; vertical-align: middle; margin: 0 .5vw 0 1.5vw; }
+
+    footer { height: 14vh; display: grid; place-items: center; padding: 0 3vw; }
+    footer > span { font-size: 3vh; font-weight: 700; }
+    footer.normal > span { color: var(--ink-2); }
+    footer.backlog > span {
+      background: var(--ink); color: #fff; font-size: 3.6vh; font-weight: 800;
+      padding: 1.6vh 4vw; border-radius: 999px;
+    }
+    @keyframes callout { 50% { background: var(--ink); color: #fff; transform: scale(1.05); } }
+  </style>
+</head>
+<body>
+  <header class="tv-head">
+    <img src="/logo.svg" alt="">
+    <h1>わたあめ<em>.</em></h1>
+    <span class="sub">呼び出し</span>
+    <span id="conn" class="conn bad">●</span>
+    <span class="clock" id="clock"></span>
+  </header>
+  <main class="tv">
+    <section class="ready">
+      <h2>お渡しできます <small>Ready</small></h2>
+      <div id="ready"></div>
+    </section>
+    <section class="waiting">
+      <h2>準備中 <small>Preparing</small></h2>
+      <div id="waiting" style="display:flex;flex-direction:column;flex:1;min-height:0"></div>
+    </section>
+  </main>
+  <footer id="banner" class="normal"></footer>
+  <script type="module" src="/display.js"></script>
+</body>
+</html>

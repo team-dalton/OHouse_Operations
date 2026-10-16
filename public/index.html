@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>わたあめ注文管理</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="icon" href="/logo.svg" type="image/svg+xml">
+  <style>
+    html, body { height: auto; }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 24px 16px; }
+    .roles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 18px; }
+    .hero { display: flex; align-items: center; gap: 16px; margin-top: 12px; }
+    .hero img { width: 64px; height: 64px; }
+    .hero h1 { font-size: 32px; font-weight: 900; }
+    .hero h1 em { font-style: normal; color: var(--red); }
+    .roles a { display: block; background: var(--panel); border-radius: var(--radius); padding: 22px; text-decoration: none; color: var(--ink); border: 1.5px solid transparent; box-shadow: var(--shadow); transition: border-color .15s, transform .08s; }
+    .roles a:hover { border-color: var(--red); }
+    .roles a:active { transform: scale(.98); }
+    .roles a.host { background: var(--ink); color: #fff; }
+    .roles a.host span { color: #b5b5bd; }
+    .roles b { display: block; font-size: 22px; font-weight: 800; margin-bottom: 4px; }
+    .roles span { color: var(--muted); font-size: 14px; }
+    .lan { margin-top: 20px; padding: 14px; background: #fff; border-radius: var(--radius); font-size: 15px; }
+    code { font-size: 17px; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero"><img src="/logo.svg" alt=""><h1>わたあめ<em>.</em> 注文管理</h1></div>
+    <p style="color:var(--muted)">この端末の役割を選んでください / Choose this device's role</p>
+    <div class="roles">
+      <a href="/server"><b>受付・受渡</b><span>注文登録・お客様へのお渡し (Server)</span></a>
+      <a href="/cook"><b>調理</b><span>わたあめを作る (Cook)</span></a>
+      <a href="/carrier"><b>運搬</b><span>完成品を受け取り口へ (Carrier)</span></a>
+      <a class="host" href="/display"><b>呼び出し画面</b><span>お客様向けTV (Host)</span></a>
+      <a class="host" href="/admin"><b>管理</b><span>設定・統計・修正 (Host)</span></a>
+    </div>
+    <div class="lan" id="lan">接続先を確認中…</div>
+  </div>
+  <script type="module">
+    import { esc } from '/common.js';
+    const s = await fetch('/api/state').then((r) => r.json());
+    document.getElementById('lan').innerHTML = s.lan.length
+      ? `他の端末からのアクセス先:<br>${s.lan.map((u) => `<code>${esc(u)}</code>`).join('<br>')}`
+      : 'LAN アドレスが見つかりません (Wi-Fi に接続してください)';
+  </script>
+</body>
+</html>

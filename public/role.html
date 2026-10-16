@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>わたあめ</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="icon" href="/logo.svg" type="image/svg+xml">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><img src="/logo.svg" alt=""><h1>わたあめ<em>.</em></h1></a>
+    <span class="role" id="role-label"></span>
+    <span class="spacer"></span>
+    <small id="device-label" style="opacity:.6"></small>
+    <span id="conn" class="conn bad">● 接続中…</span>
+  </header>
+  <main class="split">
+    <section class="pane" id="left"></section>
+    <section class="pane actions" id="right"><p class="empty-note">サーバーに接続中…</p></section>
+  </main>
+  <script type="module" src="/role.js"></script>
+</body>
+</html>
