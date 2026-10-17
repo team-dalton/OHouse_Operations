@@ -18,7 +18,7 @@
     .tv-head .clock { margin-left: auto; font-size: 4vh; font-weight: 800; font-variant-numeric: tabular-nums; }
     .tv-head .conn { font-size: 1.5vh; }
 
-    .tv { display: grid; grid-template-columns: 3fr 2fr; gap: 2vw; padding: 0 3vw; height: 74vh; }
+    .tv { display: grid; grid-template-columns: 1fr 1.15fr; gap: 2vw; padding: 0 3vw; height: 74vh; }
     .tv section { border-radius: 3.2vh; padding: 3vh 2.4vw; overflow: hidden; display: flex; flex-direction: column; }
     .tv h2 { font-size: 4vh; font-weight: 900; margin-bottom: 2.4vh; display: flex; align-items: baseline; gap: 1vw; }
     .tv h2 small { font-size: 2vh; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; opacity: .7; }
@@ -33,16 +33,68 @@
       font-size: 8vh; padding: 1.4vh 0; font-variant-numeric: tabular-nums; letter-spacing: -.03em;
     }
     .num.new { animation: callout .8s ease-in-out 6; }
-    .nums.small { grid-template-columns: repeat(auto-fill, minmax(11vh, 1fr)); gap: 1.2vh; }
-    .nums.small .num { background: var(--bg); color: var(--ink-2); font-size: 4.4vh; padding: .9vh 0; border-radius: 1.8vh; }
-    .nums.small .num.made { background: var(--ink); color: #fff; }
 
     .idle { font-size: 3.2vh; opacity: .75; margin: auto; text-align: center; line-height: 1.7; font-weight: 700; }
     .waiting .idle { color: var(--muted); opacity: 1; }
-    .count-big { font-size: 15vh; font-weight: 900; text-align: center; margin-top: 4vh; letter-spacing: -.04em; }
-    .count-big small { display: block; font-size: 2.8vh; font-weight: 700; color: var(--muted); letter-spacing: 0; }
-    .legend { font-size: 1.9vh; color: var(--muted); margin-top: auto; padding-top: 1.5vh; font-weight: 600; }
-    .legend i { display: inline-block; width: 1.8vh; height: 1.8vh; border-radius: 50%; vertical-align: middle; margin: 0 .5vw 0 1.5vw; }
+
+    /* ---- Live order tracker (準備中): one row per order, the current step pings ---- */
+    .waiting h2 .meta { margin-left: auto; display: flex; gap: 1vw; align-items: center; }
+    .waiting h2 .pill {
+      font-size: 2vh; font-weight: 800; letter-spacing: 0; text-transform: none; opacity: 1;
+      background: var(--bg); color: var(--ink-2); padding: .7vh 1.4vh; border-radius: 999px;
+    }
+    .waiting h2 .pill:empty { display: none; }
+    .waiting h2 .pill.wait { background: var(--red-tint); color: var(--red); }
+    .trk-viewport { flex: 1; min-height: 0; overflow: hidden; }
+    .trk-list { transition: transform .9s cubic-bezier(.2, .8, .2, 1); }
+    .trk-row {
+      display: grid; grid-template-columns: 12vh 1fr; align-items: center; gap: 1.6vw;
+      height: 7.6vh; margin-bottom: 1.2vh; padding: 0 1.6vw; border-radius: 2vh; background: var(--bg);
+    }
+    .trk-row.entering { animation: trk-in .6s cubic-bezier(.2, .8, .2, 1); }
+    .trk-no { font-size: 4.6vh; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: -.03em; line-height: 1; }
+    .trk-no small { display: flex; align-items: center; gap: .6vh; margin-top: .6vh; font-size: 1.5vh; font-weight: 700; color: var(--muted); letter-spacing: 0; white-space: nowrap; }
+    .trk-no small::before { content: ""; width: 1.1vh; height: 1.1vh; border-radius: 50%; background: var(--dot, var(--muted)); flex: none; }
+    .trk-track { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); }
+    .trk-track::before, .trk-fill {
+      content: ""; position: absolute; left: 12.5%; top: 1.15vh; height: .55vh; border-radius: 999px;
+    }
+    .trk-track::before { right: 12.5%; background: var(--line); }
+    .trk-fill { background: var(--red); width: calc(75% * var(--k, 0) / 3); transition: width 1s cubic-bezier(.2, .8, .2, 1); }
+    .trk-step {
+      position: relative; display: flex; flex-direction: column; align-items: center; gap: .7vh;
+      font-size: 1.8vh; font-weight: 700; color: var(--muted); transition: color .4s;
+    }
+    .trk-step i {
+      position: relative; z-index: 1; width: 2.8vh; height: 2.8vh; border-radius: 50%;
+      background: #fff; border: .45vh solid var(--line); transition: background .4s, border-color .4s;
+    }
+    .trk-step.done { color: var(--ink-2); }
+    .trk-step.done i { background: var(--red); border-color: var(--red); }
+    .trk-step.active { color: var(--red); font-weight: 900; }
+    .trk-step.active i { border-color: var(--red); background: #fff; box-shadow: 0 0 0 .5vh var(--red-tint); }
+    .trk-step.active i::before { content: ""; position: absolute; inset: .45vh; border-radius: 50%; background: var(--red); }
+    /* The ping: a ring that keeps expanding out of the current step. Rows are staggered into a gentle wave. */
+    .trk-step.active i::after {
+      content: ""; position: absolute; inset: -.45vh; border-radius: 50%; border: .35vh solid var(--red);
+      animation: ping 1.8s cubic-bezier(0, 0, .2, 1) infinite; animation-delay: var(--d, 0s);
+    }
+    .trk-row.advanced { animation: trk-flash 1.8s ease-out; }
+    .trk-row.advanced .trk-step.active i::after { animation: ping-big 1.2s cubic-bezier(0, 0, .2, 1) 2, ping 1.8s 2.4s infinite; }
+    .trk-row.leaving { animation: trk-out .7s cubic-bezier(.4, 0, 1, 1) forwards; }
+    .trk-pages { display: flex; justify-content: center; gap: 1vh; padding-top: 1vh; min-height: 2.2vh; }
+    .trk-pages i { width: 1.2vh; height: 1.2vh; border-radius: 50%; background: var(--line); transition: background .3s, width .3s; }
+    .trk-pages i.on { background: var(--red); width: 3vh; border-radius: 999px; }
+    .trk-page-no { font-size: 1.8vh; font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+    @keyframes ping { 0% { transform: scale(1); opacity: .9; } 80%, 100% { transform: scale(2.6); opacity: 0; } }
+    @keyframes ping-big { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(4); opacity: 0; } }
+    @keyframes trk-in { from { opacity: 0; transform: translateY(3vh) scale(.98); } }
+    @keyframes trk-flash { 0% { background: var(--red-tint-2); transform: scale(1.025); } 100% { background: var(--bg); transform: none; } }
+    @keyframes trk-out { to { opacity: 0; transform: translateX(-8vw); height: 0; margin-bottom: 0; } }
+    @media (prefers-reduced-motion: reduce) {
+      .trk-row.entering, .trk-row.advanced, .trk-step.active i::after { animation: none !important; }
+    }
 
     footer { height: 14vh; display: grid; place-items: center; padding: 0 3vw; }
     footer > span { font-size: 3vh; font-weight: 700; }
@@ -68,8 +120,13 @@
       <div id="ready"></div>
     </section>
     <section class="waiting">
-      <h2>準備中 <small>Preparing</small></h2>
-      <div id="waiting" style="display:flex;flex-direction:column;flex:1;min-height:0"></div>
+      <h2>準備中 <small>Preparing</small>
+        <span class="meta"><span class="pill" id="trk-count"></span><span class="pill wait" id="trk-wait"></span></span></h2>
+      <div id="waiting" style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <div class="trk-viewport" id="trk-viewport"><div class="trk-list" id="trk-list"></div></div>
+        <p class="idle" id="trk-empty">すぐにお作りします</p>
+        <div class="trk-pages" id="trk-pages"></div>
+      </div>
     </section>
   </main>
   <footer id="banner" class="normal"></footer>

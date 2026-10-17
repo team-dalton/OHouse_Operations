@@ -1,13 +1,110 @@
 // Customer-facing call screen (TV on the host laptop). Read-only.
-import { beep, connect, pad, setHTML, startOverlay } from './common.js';
+import { beep, connect, esc, pad, setHTML, startOverlay } from './common.js';
 
 const readyEl = document.getElementById('ready');
-const waitingEl = document.getElementById('waiting');
 const banner = document.getElementById('banner');
 const clock = document.getElementById('clock');
 
 const flashUntil = new Map();
 let seen = null;
+
+// --- Live tracker (準備中) ----------------------------------------------------
+// Rows are kept and updated in place (not re-rendered), so CSS can animate an order moving to its next step.
+const STEPS = ['受付', '調理', '運搬', 'お渡し'];
+const ACTIVE_STEP = { ordered: 1, made: 2 }; // 受付 is done once ordered; the active dot is where the order is now
+const trkList = document.getElementById('trk-list');
+const trkViewport = document.getElementById('trk-viewport');
+const trkPages = document.getElementById('trk-pages');
+const trkEmpty = document.getElementById('trk-empty');
+const rows = new Map(); // order id → { el, status }
+let page = 0;
+let trackerReady = false; // rows present when the screen first loads appear without the slide-in
+
+function makeRow(o, products) {
+  const el = document.createElement('div');
+  el.className = 'trk-row';
+  el.style.setProperty('--dot', `var(--p${o.product})`);
+  el.innerHTML = `
+    <div class="trk-no">${pad(o.ticket_no)}<small>${esc(products[o.product]?.name ?? o.product)}</small></div>
+    <div class="trk-track"><span class="trk-fill"></span>${STEPS.map((s) => `<span class="trk-step"><i></i>${s}</span>`).join('')}</div>`;
+  return el;
+}
+
+function setStep(el, k) {
+  el.style.setProperty('--k', k);
+  el.querySelectorAll('.trk-step').forEach((s, i) => {
+    s.classList.toggle('done', i < k);
+    s.classList.toggle('active', i === k);
+  });
+}
+
+function renderTracker(pending, products) {
+  const ids = new Set(pending.map((o) => o.id));
+
+  // Ready or cancelled: slide out, then remove.
+  for (const [id, r] of rows) {
+    if (ids.has(id) || r.leaving) continue;
+    r.leaving = true;
+    r.el.classList.add('leaving');
+    setTimeout(() => { r.el.remove(); rows.delete(id); layout(); }, 700);
+  }
+
+  pending.forEach((o, i) => {
+    let r = rows.get(o.id);
+    if (!r) {
+      r = { el: makeRow(o, products), status: null };
+      rows.set(o.id, r);
+      trkList.append(r.el); // orders arrive oldest-first, so new rows belong at the end
+      if (trackerReady) {
+        r.el.classList.add('entering');
+        r.el.addEventListener('animationend', () => r.el.classList.remove('entering'), { once: true });
+      }
+    }
+    if (r.status !== o.status) {
+      setStep(r.el, ACTIVE_STEP[o.status]);
+      if (r.status) {
+        // Moved to the next step: flash the row and send out a big ping.
+        r.el.classList.remove('advanced', 'entering');
+        void r.el.offsetWidth;
+        r.el.classList.add('advanced');
+        r.el.addEventListener('animationend', (e) => e.target === r.el && r.el.classList.remove('advanced'), { once: true });
+      }
+      r.status = o.status;
+    }
+    r.el.style.setProperty('--d', `${(i % 8) * 0.18}s`); // stagger pings into a wave down the list
+  });
+
+  trkEmpty.hidden = pending.length > 0;
+  trackerReady = true;
+  layout();
+}
+
+// Show as many rows as fit; if there are more, page through them automatically.
+function layout() {
+  const rowEls = [...trkList.children].filter((el) => !el.classList.contains('leaving'));
+  const first = rowEls[0];
+  if (!first) {
+    trkList.style.transform = '';
+    trkPages.innerHTML = '';
+    return;
+  }
+  const gap = parseFloat(getComputedStyle(first).marginBottom);
+  const rowH = first.offsetHeight + gap;
+  // Fit whole rows only: size the viewport to an exact number of rows so none is cut in half.
+  const avail = trkViewport.parentElement.clientHeight - trkPages.offsetHeight;
+  const perPage = Math.max(1, Math.floor((avail + gap) / rowH));
+  trkViewport.style.flex = 'none';
+  trkViewport.style.height = `${perPage * rowH - gap}px`;
+  const pages = Math.ceil(rowEls.length / perPage);
+  if (page >= pages) page = 0;
+  trkList.style.transform = `translateY(${-page * perPage * rowH}px)`;
+  trkPages.innerHTML = pages <= 1 ? ''
+    : pages <= 8 ? Array.from({ length: pages }, (_, i) => `<i class="${i === page ? 'on' : ''}"></i>`).join('')
+    : `<span class="trk-page-no">${page + 1} / ${pages}</span>`;
+}
+
+setInterval(() => { page++; layout(); }, 7000);
+window.addEventListener('resize', layout);
 
 startOverlay('呼び出し画面', { fullscreen: true });
 connect({ role: 'display', name: 'display', onState: render });
@@ -37,17 +134,9 @@ function render(state) {
         `<div class="num ${(flashUntil.get(o.id) ?? 0) > Date.now() ? 'new' : ''}">${pad(o.ticket_no)}</div>`).join('')}</div>`
     : `<p class="idle">お呼び出しする番号が<br>ここに表示されます</p>`);
 
-  // Normal: just a count. Backlogged: list every waiting number so customers can find theirs.
-  if (backlog) {
-    setHTML(waitingEl, `
-      <div class="nums small">${pending.map((o) =>
-        `<div class="num ${o.status === 'made' ? 'made' : ''}">${pad(o.ticket_no)}</div>`).join('')}</div>
-      <div class="legend"><i style="background:var(--bg);border:1px solid var(--line)"></i>調理待ち<i style="background:var(--ink)"></i>調理済み・運搬中</div>`);
-  } else {
-    setHTML(waitingEl, pending.length
-      ? `<div class="count-big">${pending.length}<small>件 準備中</small></div>`
-      : `<p class="idle">すぐにお作りします</p>`);
-  }
+  renderTracker(pending, state.config.products);
+  document.getElementById('trk-count').textContent = pending.length ? `${pending.length}件` : '';
+  document.getElementById('trk-wait').textContent = pending.length ? `待ち 約${estWaitMin}分` : '';
 
   banner.className = backlog ? 'backlog' : 'normal';
   setHTML(banner, `<span>${backlog
