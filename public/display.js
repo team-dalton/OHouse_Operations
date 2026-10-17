@@ -88,16 +88,20 @@ function layout() {
     trkPages.innerHTML = '';
     return;
   }
-  const gap = parseFloat(getComputedStyle(first).marginBottom);
+  const listStyle = getComputedStyle(trkList);
+  const gap = parseFloat(listStyle.rowGap) || 0;
   const rowH = first.offsetHeight + gap;
   // Fit whole rows only: size the viewport to an exact number of rows so none is cut in half.
   const avail = trkViewport.parentElement.clientHeight - trkPages.offsetHeight;
   const perPage = Math.max(1, Math.floor((avail + gap) / rowH));
   trkViewport.style.flex = 'none';
   trkViewport.style.height = `${perPage * rowH - gap}px`;
+  // Each page is one grid column of perPage rows; pages are laid out left to right.
+  trkList.style.gridTemplateRows = `repeat(${perPage}, ${first.offsetHeight}px)`;
   const pages = Math.ceil(rowEls.length / perPage);
   if (page >= pages) page = 0;
-  trkList.style.transform = `translateY(${-page * perPage * rowH}px)`;
+  const pageW = trkViewport.clientWidth + (parseFloat(listStyle.columnGap) || 0);
+  trkList.style.transform = `translateX(${-page * pageW}px)`;
   trkPages.innerHTML = pages <= 1 ? ''
     : pages <= 8 ? Array.from({ length: pages }, (_, i) => `<i class="${i === page ? 'on' : ''}"></i>`).join('')
     : `<span class="trk-page-no">${page + 1} / ${pages}</span>`;

@@ -46,10 +46,14 @@
     .waiting h2 .pill:empty { display: none; }
     .waiting h2 .pill.wait { background: var(--red-tint); color: var(--red); }
     .trk-viewport { flex: 1; min-height: 0; overflow: hidden; }
-    .trk-list { transition: transform .9s cubic-bezier(.2, .8, .2, 1); }
+    /* Pages sit side by side: rows fill one page-wide column, then the next. Paging slides the list left. */
+    .trk-list {
+      display: grid; grid-auto-flow: column; grid-auto-columns: 100%; column-gap: 4vw; row-gap: 1.2vh;
+      transition: transform .9s cubic-bezier(.65, 0, .35, 1);
+    }
     .trk-row {
       display: grid; grid-template-columns: 12vh 1fr; align-items: center; gap: 1.6vw;
-      height: 7.6vh; margin-bottom: 1.2vh; padding: 0 1.6vw; border-radius: 2vh; background: var(--bg);
+      height: 7.6vh; padding: 0 1.6vw; border-radius: 2vh; background: var(--bg);
     }
     .trk-row.entering { animation: trk-in .6s cubic-bezier(.2, .8, .2, 1); }
     .trk-no { font-size: 4.6vh; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: -.03em; line-height: 1; }
@@ -91,7 +95,7 @@
     @keyframes ping-big { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(4); opacity: 0; } }
     @keyframes trk-in { from { opacity: 0; transform: translateY(3vh) scale(.98); } }
     @keyframes trk-flash { 0% { background: var(--red-tint-2); transform: scale(1.025); } 100% { background: var(--bg); transform: none; } }
-    @keyframes trk-out { to { opacity: 0; transform: translateX(-8vw); height: 0; margin-bottom: 0; } }
+    @keyframes trk-out { to { opacity: 0; transform: translateX(-8vw); } }
     @media (prefers-reduced-motion: reduce) {
       .trk-row.entering, .trk-row.advanced, .trk-step.active i::after { animation: none !important; }
     }
