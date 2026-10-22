@@ -243,3 +243,25 @@ document.getElementById('logout').addEventListener('click', async () => {
   await post('/api/logout', {});
   location.href = '/login';
 });
+
+// --- Reset the current day ---------------------------------------------------
+
+document.getElementById('reset-day').addEventListener('click', async () => {
+  const day = state.config.day;
+  const total = orders.filter((o) => o.ticket_no != null).length;
+  const inProgress = orders.filter((o) => o.ticket_no != null && ['ordered', 'made', 'delivered'].includes(o.status)).length;
+  const message = `${day}日目の記録をリセットします（注文 ${total}件）。\n\n`
+    + '・統計と注文一覧が空になります\n'
+    + '・食券番号は 1 から始まります\n'
+    + (inProgress ? `・進行中の注文 ${inProgress}件は「取消」になります\n` : '')
+    + '・注文は削除されず、CSV とスプレッドシートには残ります\n\nよろしいですか？';
+  if (!confirm(message)) return;
+  const r = await post('/api/reset-day', { day, device: 'admin' });
+  if (r.ok) {
+    toast(`${day}日目をリセットしました（${r.data.reset}件）`);
+    formDirty = false;
+    refresh();
+  } else {
+    toast(errorMessage(r), { kind: 'error' });
+  }
+});

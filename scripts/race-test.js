@@ -162,6 +162,42 @@ try {
     assert.notEqual(b.data.order.ticket_no, a.data.order.ticket_no);
   });
 
+  await test('four products with the real names; product D can be ordered', async () => {
+    const s = await fetch(`${BASE}/api/state`).then((r) => r.json());
+    assert.deepEqual(Object.values(s.config.products).map((p) => p.name),
+      ['barbe à./綿飴', 'Caramella al./ピュレレモン', 'Gemma f./パチパチ', 'Gommose/ピュレブドウ']);
+    const r = await post('/api/orders', { product: 'D', device: 'server' });
+    assert.equal(r.status, 201);
+    assert.equal(r.data.order.product, 'D');
+  });
+
+  await test('old placeholder names (トッピングA…) are replaced, custom names are kept', async () => {
+    await post('/api/settings', { products: { A: { name: 'トッピングA' }, B: { name: 'レモン特製' } } });
+    const s = await fetch(`${BASE}/api/state`).then((r) => r.json());
+    assert.equal(s.config.products.A.name, 'barbe à./綿飴');
+    assert.equal(s.config.products.B.name, 'レモン特製');
+    await post('/api/settings', { products: { B: { name: 'Caramella al./ピュレレモン' } } });
+  });
+
+  await test('resetting the day empties its stats, cancels in-progress orders, restarts tickets at #1', async () => {
+    const day = (await fetch(`${BASE}/api/state`).then((r) => r.json())).config.day;
+    const before = await fetch(`${BASE}/api/stats?day=${day}`).then((r) => r.json());
+    assert.ok(before.byStatus.length > 0);
+    const r = await post('/api/reset-day', { day, device: 'admin' });
+    assert.equal(r.status, 200);
+    assert.ok(r.data.reset > 0);
+    const after = await fetch(`${BASE}/api/stats?day=${day}`).then((r) => r.json());
+    assert.equal(after.byStatus.filter((x) => x.product).length, 0);
+    const s = await fetch(`${BASE}/api/state`).then((r) => r.json());
+    assert.equal(s.active.length, 0, 'in-progress orders should be cancelled');
+    assert.equal(s.config.nextTicket, 1);
+    // Nothing is deleted: the orders are still in the export (moved to day 0).
+    const csv = await fetch(`${BASE}/api/export.csv`).then((r) => r.text());
+    assert.ok(csv.trim().split('\n').length - 1 >= r.data.reset);
+    const n = await post('/api/orders', { product: 'A', device: 'server' });
+    assert.equal(n.data.order.ticket_no, 1);
+  });
+
   await test('sold-out product cannot be ordered', async () => {
     await post('/api/settings', { products: { B: { soldOut: true } } });
     const r = await post('/api/orders', { product: 'B', device: 'server' });

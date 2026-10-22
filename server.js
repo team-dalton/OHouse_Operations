@@ -119,9 +119,10 @@ const TS_COL = { made: 'made_at', delivered: 'delivered_at', completed: 'complet
 
 const DEFAULT_CONFIG = {
   products: {
-    A: { name: 'トッピングA', soldOut: false },
-    B: { name: 'トッピングB', soldOut: false },
-    C: { name: 'トッピングC', soldOut: false },
+    A: { name: 'barbe à./綿飴', soldOut: false },
+    B: { name: 'Caramella al./ピュレレモン', soldOut: false },
+    C: { name: 'Gemma f./パチパチ', soldOut: false },
+    D: { name: 'Gommose/ピュレブドウ', soldOut: false },
   },
   day: 1,
   nextTicket: 1,
@@ -137,8 +138,19 @@ function getConfig() {
   return {
     ...DEFAULT_CONFIG,
     ...saved,
-    products: { ...structuredClone(DEFAULT_CONFIG.products), ...saved.products },
+    products: mergeProducts(saved.products ?? {}),
   };
+}
+
+// Saved settings keep custom product names, but the old placeholder names (トッピングA…) are replaced by the
+// current defaults, so an existing database picks up the real product names without anyone retyping them.
+function mergeProducts(saved) {
+  const merged = structuredClone(DEFAULT_CONFIG.products);
+  for (const [key, p] of Object.entries(saved)) {
+    const placeholder = /^トッピング[A-Z]$/.test(p.name ?? '');
+    merged[key] = { ...merged[key], ...p, ...(placeholder && merged[key] ? { name: merged[key].name } : {}) };
+  }
+  return merged;
 }
 
 function saveConfig(cfg) {
@@ -208,6 +220,37 @@ function createOrder(product, device) {
     .run(cfg.day, ticket, product, now, device);
   recordEvent(lastInsertRowid, null, 'ordered', device, now);
   return getOrder(lastInsertRowid);
+}
+
+// Admin "reset this day": the day's orders leave the stats and order list and the ticket counter restarts.
+// Nothing is deleted — the orders move to day 0 (リセット済み), so they stay in the CSV export and the sheet.
+// Orders still in progress are cancelled; spares (real candy waiting to be used) are left alone.
+function resetDay(day, device) {
+  const now = Date.now();
+  const rows = db.prepare(`SELECT id, status FROM orders WHERE day = ? AND ticket_no IS NOT NULL`).all(day);
+  let cancelled = 0;
+  db.exec('BEGIN');
+  try {
+    for (const r of rows) {
+      if (['ordered', 'made', 'delivered'].includes(r.status)) {
+        db.prepare(`UPDATE orders SET status = 'cancelled', cancelled_at = ?, updated_by = ? WHERE id = ?`)
+          .run(now, device, r.id);
+        cancelled++;
+      }
+      db.prepare(`UPDATE orders SET day = 0 WHERE id = ?`).run(r.id);
+      recordEvent(r.id, r.status, 'reset', device, now);
+    }
+    const cfg = getConfig();
+    if (cfg.day === day) {
+      cfg.nextTicket = 1;
+      saveConfig(cfg);
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  return { reset: rows.length, cancelled };
 }
 
 // Cook made one cotton candy without a specific order. If an order is waiting, it fills the oldest one
@@ -519,7 +562,7 @@ function importOrders(rows, mode) {
     const ticket = String(r.ticket_no ?? '').trim();
     return [
       id,
-      Number(r.day) || 1,
+      String(r.day ?? '').trim() === '' ? 1 : Number(r.day) || 0,
       ticket ? Number(ticket) : null,
       String(r.product ?? '').trim() || null,
       status,
@@ -712,6 +755,15 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && pathname === '/api/backup-info') return json(res, 200, { sheetUrl: SHEETS_VIEW_URL });
 
   // Queue every order for the sheet — for orders created before the backup was set up, or a fresh sheet.
+  if (req.method === 'POST' && pathname === '/api/reset-day') {
+    const body = await readBody(req);
+    const day = Number(body.day);
+    if (!Number.isInteger(day) || day < 1) throw new HttpError(400, 'bad_day');
+    const result = resetDay(day, deviceOf(body));
+    broadcast();
+    return json(res, 200, result);
+  }
+
   if (req.method === 'POST' && pathname === '/api/backup-resend') {
     if (!SHEETS_URL) throw new HttpError(409, 'sheets_not_configured');
     const all = db.prepare(`SELECT * FROM orders ORDER BY id`).all();

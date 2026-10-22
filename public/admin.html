@@ -24,6 +24,7 @@
     .sync-ok { color: #2fb344; font-weight: 800; }
     .sync-bad { color: var(--red); font-weight: 800; }
     .sheet-link { display: flex; align-items: center; justify-content: center; text-decoration: none; margin-top: 12px; font-size: 16px; min-height: 48px; }
+    .reset-day { margin-top: 16px; min-height: 48px; font-size: 16px; background: var(--panel); color: var(--red); box-shadow: inset 0 0 0 2px var(--red); }
     .logout { background: none; border: 0; color: var(--muted); font-size: 13px; text-decoration: underline; }
     form input[type=number] { width: 90px; }
     form .save { margin-top: 10px; min-height: 44px; font-size: 16px; }
@@ -63,6 +64,9 @@
     <section class="pane">
       <h2>統計 (<span id="stats-day"></span>日目)</h2>
       <div id="stats"></div>
+      <button class="btn wide reset-day" id="reset-day" type="button">この日の記録をリセット</button>
+      <p class="hint" style="margin-top:8px">リハーサル後などに。この日の統計と注文一覧が空になり、食券番号は 1 から始まります。
+        注文は削除されず、CSV エクスポートとスプレッドシートには残ります。</p>
     </section>
     <section class="pane">
       <h2>接続中の端末</h2>

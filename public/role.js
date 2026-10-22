@@ -19,6 +19,7 @@ const selected = new Set();      // carrier multi-select
 const flashUntil = new Map();    // order id → timestamp; cards flash while new
 let seen = null;                 // ids already shown in this role's action list
 let creating = false;
+let selectedProduct = null; // 受付: product tapped but not yet confirmed
 let makingSpare = false;
 let lastCreated = null;          // { order, at } for the server's "hand over ticket #" callout
 
@@ -87,11 +88,27 @@ function card(o, { label, big = false, selectable = false, showProduct = true } 
 function renderServer(list) {
   const { products } = state.config;
   const { pending, estWaitMin } = state.queue;
-  const buttons = Object.keys(products).map((k) => `
-    <button class="product-btn p${k}" data-action="create" data-product="${k}"
+  if (selectedProduct && products[selectedProduct]?.soldOut) selectedProduct = null;
+  const buttons = Object.keys(products).map((k) => {
+    // Names are "brand/日本語"; show the brand large and the Japanese underneath.
+    const [main, sub] = products[k].name.split('/');
+    return `
+    <button class="product-btn p${k} ${selectedProduct === k ? 'selected' : ''}" data-action="select" data-product="${k}"
             ${products[k].soldOut || creating ? 'disabled' : ''}>
-      ${esc(products[k].name)}<small>${products[k].soldOut ? '売り切れ' : 'タップで注文登録'}</small>
+      <span class="pname">${esc(main)}</span>${sub ? `<span class="psub">${esc(sub)}</span>` : ''}
+      <small>${products[k].soldOut ? '売り切れ' : selectedProduct === k ? '選択中' : 'タップして選択'}</small>`;
+  }).map((html) => `${html}
     </button>`).join('');
+
+  // Second step: confirm (or back out) before the order is registered.
+  const confirmBar = selectedProduct ? `
+    <div class="confirm-bar">
+      <div class="confirm-text"><span class="chip p${selectedProduct}">${esc(products[selectedProduct].name)}</span> を注文しますか？</div>
+      <div class="confirm-actions">
+        <button class="btn secondary" data-action="unselect" type="button">やめる</button>
+        <button class="btn big" data-action="create" data-product="${selectedProduct}" type="button" ${creating ? 'disabled' : ''}>注文を確定</button>
+      </div>
+    </div>` : '';
 
   let callout = '';
   if (lastCreated) {
@@ -123,7 +140,8 @@ function renderServer(list) {
         現在 ${pending}件待ち・約${estWaitMin}分</small></h2>
       ${spareInfo}
       <div class="product-buttons">${buttons}</div>
-      ${callout}
+      ${confirmBar}
+      ${confirmBar ? '' : callout}
     </div>
     <div class="section">
       <h2>お渡し待ち (${list.length})</h2>
@@ -183,7 +201,14 @@ right.addEventListener('click', (e) => {
   const order = state.active.find((o) => o.id === id);
 
   switch (el.dataset.action) {
+    case 'select':
+      selectedProduct = selectedProduct === el.dataset.product ? null : el.dataset.product;
+      return render();
+    case 'unselect':
+      selectedProduct = null;
+      return render();
     case 'create':
+      selectedProduct = null;
       return createOrder(el.dataset.product);
     case 'advance':
       return order && advance([order], R.to);

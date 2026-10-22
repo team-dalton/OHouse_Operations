@@ -43,7 +43,7 @@ async function tick() {
   const now = Date.now();
 
   if (Math.random() < (RATE / 60) * SPEED) {
-    const { order } = await post('/api/orders', { product: 'ABC'[Math.floor(Math.random() * 3)], device: 'simulator' });
+    const { order } = await post('/api/orders', { product: 'ABCD'[Math.floor(Math.random() * 4)], device: 'simulator' });
     if (order) console.log(`  new #${order.ticket_no}`);
   }
 
