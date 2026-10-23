@@ -185,13 +185,17 @@ main.split {
 .product-btn.selected { border-color: var(--red); background: var(--red-tint); box-shadow: 0 0 0 3px var(--red-tint-2); }
 .product-btn.selected small { color: var(--red); font-weight: 800; }
 
-/* 受付: main product first (full width), then its topping */
-.product-btn.main-btn { grid-column: 1 / -1; min-height: 150px; }
+/* 受付: 綿飴 (+ トッピングなし) on the left, the toppings on the right — locked until 綿飴 is chosen */
+.product-buttons:has(.order-main) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: stretch; }
+.order-main, .order-toppings { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.order-main .main-btn { flex: 1; min-height: 200px; }
 .product-btn.main-btn .pname { font-size: 30px; }
 .product-btn.main-btn .psub { font-size: 18px; }
-.main-chosen { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 700; color: var(--ink-2); }
-.main-chosen .chip { font-size: 15px; padding: 5px 12px; }
-.linkish { margin-left: auto; background: none; border: 0; color: var(--muted); text-decoration: underline; font-size: 14px; padding: 6px; }
+.order-toppings .product-btn { flex: 1; min-height: 88px; }
+.product-btn.plain-btn { min-height: 76px; border-style: dashed; }
+.product-btn.plain-btn::before { display: none; }
+.product-btn:disabled { opacity: .38; box-shadow: none; }
+.product-btn.main-btn.selected small { color: var(--red); }
 
 /* 受付: confirm the order before it is registered */
 .confirm-bar {

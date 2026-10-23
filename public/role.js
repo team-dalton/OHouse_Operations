@@ -89,33 +89,34 @@ function card(o, { label, big = false, selectable = false, showProduct = true } 
 function renderServer(list) {
   const { products } = state.config;
   const { pending, estWaitMin } = state.queue;
-  // Two steps: the main product (綿飴 barbe à.) first, then its topping (or none), then confirm.
+  // Everything is on screen at once: the main product (綿飴) on the left with 「トッピングなし」 under it,
+  // the toppings on the right. The toppings and 「トッピングなし」 unlock only after 綿飴 is selected.
   const [main, ...toppings] = Object.keys(products);
   if (products[main].soldOut) mainChosen = false;
-  if (selectedProduct && products[selectedProduct]?.soldOut) selectedProduct = null;
+  if (selectedProduct && (products[selectedProduct]?.soldOut || !mainChosen)) selectedProduct = null;
   const split = (k) => products[k].name.split('/'); // "brand/日本語"
+  const locked = !mainChosen || creating;
 
-  let buttons;
-  if (!mainChosen) {
-    const [brand, ja] = split(main);
-    buttons = `
-      <button class="product-btn main-btn p${main}" data-action="main" ${products[main].soldOut || creating ? 'disabled' : ''}>
+  const option = (k, label, sub, cls = '') => `
+    <button class="product-btn p${k} ${cls} ${selectedProduct === k ? 'selected' : ''}" data-action="select" data-product="${k}"
+            ${products[k].soldOut || locked ? 'disabled' : ''}>
+      <span class="pname">${esc(label)}</span>${sub ? `<span class="psub">${esc(sub)}</span>` : ''}
+      <small>${products[k].soldOut ? '売り切れ' : !mainChosen ? '綿飴を先に選択' : selectedProduct === k ? '選択中' : 'タップして選択'}</small>
+    </button>`;
+
+  const [brand, ja] = split(main);
+  const buttons = `
+    <div class="order-main">
+      <button class="product-btn main-btn p${main} ${mainChosen ? 'selected' : ''}" data-action="main"
+              ${products[main].soldOut || creating ? 'disabled' : ''}>
         <span class="pname">${esc(brand)}</span>${ja ? `<span class="psub">${esc(ja)}</span>` : ''}
-        <small>${products[main].soldOut ? '売り切れ' : 'タップしてトッピングを選ぶ'}</small>
-      </button>`;
-  } else {
-    const option = (k, label, sub) => `
-      <button class="product-btn p${k} ${selectedProduct === k ? 'selected' : ''}" data-action="select" data-product="${k}"
-              ${products[k].soldOut || creating ? 'disabled' : ''}>
-        <span class="pname">${esc(label)}</span>${sub ? `<span class="psub">${esc(sub)}</span>` : ''}
-        <small>${products[k].soldOut ? '売り切れ' : selectedProduct === k ? '選択中' : 'タップして選択'}</small>
-      </button>`;
-    buttons = `
-      <div class="main-chosen"><span class="chip p${main}">${esc(products[main].name)}</span> のトッピングを選んでください
-        <button class="linkish" data-action="unselect" type="button">戻る</button></div>
-      ${option(main, 'トッピングなし', split(main)[1] ? `${split(main)[1]}のみ` : '')}
-      ${toppings.map((k) => option(k, ...split(k))).join('')}`;
-  }
+        <small>${products[main].soldOut ? '売り切れ' : mainChosen ? '選択中 — トッピングを選んでください' : 'まずタップ'}</small>
+      </button>
+      ${option(main, 'トッピングなし', ja ? `${ja}のみ` : '', 'plain-btn')}
+    </div>
+    <div class="order-toppings">
+      ${toppings.map((k) => option(k, ...split(k))).join('')}
+    </div>`;
 
   // Last step: confirm (or back out) before the order is registered.
   const toppingLabel = selectedProduct === main ? 'トッピングなし' : selectedProduct ? products[selectedProduct].name : '';
@@ -221,7 +222,7 @@ right.addEventListener('click', (e) => {
 
   switch (el.dataset.action) {
     case 'main':
-      mainChosen = true;
+      mainChosen = !mainChosen; // tap again to deselect
       selectedProduct = null;
       return render();
     case 'select':
