@@ -197,6 +197,17 @@ main.split {
 .product-btn:disabled { opacity: .38; box-shadow: none; }
 .product-btn.main-btn.selected small { color: var(--red); }
 
+/* Cook: call for help */
+.help-bar { margin-bottom: 16px; }
+.help-btn { background: var(--panel); color: var(--red); box-shadow: inset 0 0 0 2px var(--red); min-height: 52px; font-size: 18px; }
+.help-btn:active:not(:disabled) { background: var(--red-tint); }
+.help-bar.active {
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--radius-sm);
+  background: var(--red); color: #fff; font-weight: 800; font-size: 17px; animation: pulse 1.4s infinite;
+}
+.help-bar.active small { display: block; font-weight: 600; opacity: .85; font-size: 13px; }
+.help-bar.active .btn { margin-left: auto; min-height: 44px; min-width: 0; font-size: 15px; }
+
 /* 受付: confirm the order before it is registered */
 .confirm-bar {
   margin-top: 14px; padding: 16px; border-radius: var(--radius); background: var(--panel);

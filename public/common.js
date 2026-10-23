@@ -10,7 +10,9 @@ export const STATUS_LABEL = {
 export const FLOW = ['ordered', 'made', 'delivered', 'completed'];
 const STEP_LABEL = ['受付', '調理', '運搬', '完了'];
 
-export const ROLE_LABEL = { server: '受付・受渡', cook: '調理', carrier: '運搬', display: '呼び出し', admin: '管理' };
+export const ROLE_LABEL = {
+  server: '受付', handoff: '受け渡し', cook: '調理', carrier: '運搬', display: '呼び出し', admin: '管理',
+};
 
 export const pad = (n) => String(n).padStart(3, '0');
 
@@ -241,6 +243,17 @@ export function beep(freq = 880, duration = 0.15, times = 1) {
     osc.connect(gain).connect(audio.destination);
     osc.start(t);
     osc.stop(t + duration);
+  }
+}
+
+// Turns sound on; must be called from a tap/click (browsers block audio until then).
+export async function enableSound() {
+  try {
+    audio ??= new (window.AudioContext || window.webkitAudioContext)();
+    await audio.resume();
+    return true;
+  } catch {
+    return false;
   }
 }
 

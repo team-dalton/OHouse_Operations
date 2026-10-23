@@ -20,8 +20,9 @@ The terminal prints the address other devices should open, e.g. `http://192.168.
 
 | Device | Open | Screen |
 |---|---|---|
-| Tablet 1 | `/server` | Left: overall progress. Right: topping buttons (register order → shows 食券 # to hand over) and orders waiting at the counter (お渡し完了). |
-| Tablet 2 | `/cook` | Right: next order to make (完成), queue, per-topping counts. |
+| Tablet 1 | `/server` | 受付: register orders (綿飴 → topping or none → 注文を確定) and hand over the 食券 #. |
+| Tablet 1b | `/handoff` | 受け渡し: orders waiting at the counter, topping shown large → お渡し完了. |
+| Tablet 2 | `/cook` | Next order to make (完成), queue, 予備, and 「ヘルプを呼ぶ」 (alerts /admin). |
 | Phone/tablet 3 | `/carrier` | Right: finished orders to carry; select some (or none = all) → 運搬完了. |
 | Host laptop → TV | `/display` | Customer call screen. Ready numbers + chime. Backlog mode lists every waiting number with an estimated wait. |
 | Host laptop | `/admin` | Topping names, sold-out, day 1/2, ticket counter, backlog thresholds, stats, fix any order, CSV export. |

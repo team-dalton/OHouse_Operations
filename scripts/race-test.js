@@ -198,6 +198,23 @@ try {
     assert.equal(n.data.order.ticket_no, 1);
   });
 
+  await test('cook help request shows up for admin, once per device, until resolved', async () => {
+    const r1 = await post('/api/help', { device: 'cook-x', role: 'cook' });
+    const r2 = await post('/api/help', { device: 'cook-x', role: 'cook' }); // pressing again doesn't duplicate
+    assert.equal(r1.status, 201);
+    assert.equal(r2.data.help.id, r1.data.help.id);
+    let s = await fetch(`${BASE}/api/state`).then((r) => r.json());
+    assert.deepEqual(s.help.map((h) => [h.device, h.role]), [['cook-x', 'cook']]);
+    await post(`/api/help/${r1.data.help.id}/resolve`, { device: 'admin' });
+    s = await fetch(`${BASE}/api/state`).then((r) => r.json());
+    assert.equal(s.help.length, 0);
+  });
+
+  await test('the 受け渡し screen exists at /handoff', async () => {
+    const r = await fetch(`${BASE}/handoff`);
+    assert.equal(r.status, 200);
+  });
+
   await test('sold-out product cannot be ordered', async () => {
     await post('/api/settings', { products: { B: { soldOut: true } } });
     const r = await post('/api/orders', { product: 'B', device: 'server' });

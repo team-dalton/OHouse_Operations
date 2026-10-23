@@ -22,13 +22,17 @@ let creating = false;
 let selectedProduct = null; // 受付: product tapped but not yet confirmed
 let mainChosen = false;      // 受付: main product (綿飴) tapped; now choosing its topping
 let makingSpare = false;
+let helpBusy = false;
 let lastCreated = null;          // { order, at } for the server's "hand over ticket #" callout
 
 const productName = (o) => state.config.products[o.product]?.name ?? o.product;
 
 // Each role acts on orders in one status, and moves them to the next one.
 const ROLES = {
-  server: { acts: 'delivered', to: 'completed', sound: [1047, 0.15, 2], render: renderServer },
+  // 受付 only takes orders now (its list stays empty, so it never beeps for arrivals).
+  server: { acts: 'ordered', to: null, sound: [1047, 0.15, 2], render: renderServer, list: () => [] },
+  // 受け渡し: the second person at the counter hands finished orders to customers.
+  handoff: { acts: 'delivered', to: 'completed', sound: [1047, 0.15, 2], render: renderHandoff },
   cook: { acts: 'ordered', to: 'made', sound: [660, 0.12, 1], render: renderCook },
   // The carrier moves spares too: they need to reach the counter just like orders.
   carrier: {
@@ -162,12 +166,16 @@ function renderServer(list) {
       <div class="product-buttons">${buttons}</div>
       ${confirmBar}
       ${confirmBar ? '' : callout}
-    </div>
-    <div class="section">
-      <h2>お渡し待ち (${list.length})</h2>
-      ${list.map((o) => card(o, { label: 'お渡し完了' })).join('')
-        || '<p class="empty-note">運搬済みの注文が届くとここに表示されます</p>'}
     </div>`);
+}
+
+// --- 受け渡し (handoff) ----------------------------------------------------
+// Orders waiting at the counter. The topping is shown large: it is added here, just before handing over.
+function renderHandoff(list) {
+  setHTML(right, `
+    <h2>お渡し待ち (${list.length})</h2>
+    ${list.map((o) => card(o, { label: 'お渡し完了', big: true })).join('')
+      || '<p class="empty-note">運搬済みの注文が届くとここに表示されます</p>'}`);
 }
 
 // --- 調理 (cook) -----------------------------------------------------------
@@ -186,11 +194,24 @@ function renderCook(list) {
     </div>`;
 
   setHTML(right, `
+    ${helpButton()}
     <h2>調理待ち (${list.length})</h2>
     ${first
       ? card(first, { label: '完成', big: true, showProduct: false })
       : `<p class="empty-note">調理待ちの注文はありません<br>手が空いたら予備を作れます</p>${spareSection}`}
     ${rest.length ? `<h3>次の注文</h3>${rest.map((o) => card(o, { label: '完成', showProduct: false })).join('')}` : ''}`);
+}
+
+// Help: the cook can call the admin. While a request is open, the button shows it and can cancel it.
+function helpButton() {
+  const mine = (state.help ?? []).find((h) => h.device === device);
+  return mine
+    ? `<div class="help-bar active">
+         <span>🆘 ヘルプ要請中… <small>管理者の対応を待っています</small></span>
+         <button class="btn secondary" data-action="help-cancel" data-help="${mine.id}" type="button">取消</button>
+       </div>`
+    : `<div class="help-bar"><button class="btn help-btn wide" data-action="help" type="button" ${helpBusy ? 'disabled' : ''}>
+         🆘 ヘルプを呼ぶ</button></div>`;
 }
 
 // --- 運搬 (carrier) --------------------------------------------------------
@@ -247,10 +268,24 @@ right.addEventListener('click', (e) => {
       selected.clear();
       return advance(targets, 'delivered');
     }
+    case 'help':
+      return callHelp();
+    case 'help-cancel':
+      return post(`/api/help/${el.dataset.help}/resolve`, { device }).then(render);
     case 'spare':
       return makeSpare();
   }
 });
+
+async function callHelp() {
+  helpBusy = true;
+  render();
+  const r = await post('/api/help', { device, role });
+  helpBusy = false;
+  if (r.ok) toast('ヘルプを呼びました — 管理画面に通知されています');
+  else toast(errorMessage(r), { kind: 'error' });
+  render();
+}
 
 async function makeSpare() {
   makingSpare = true;

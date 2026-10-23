@@ -392,6 +392,7 @@ function snapshot() {
     devices: [...clients.values()].map(({ role, name, since }) => ({ role, name, since })),
     lan: lanUrls(),
     sync: syncInfo(),
+    help: helpRequests,
     auth: Boolean(PASSCODE),
   };
 }
@@ -409,6 +410,10 @@ function lanUrls() {
 // ---------------------------------------------------------------------------
 
 const clients = new Map(); // res → { role, name, since }
+
+// Open help requests ({ id, device, role, at }). Kept in memory: they only matter while someone is waiting.
+const helpRequests = [];
+let helpSeq = 0;
 
 function send(res, event, data) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -610,12 +615,13 @@ const PAGES = {
   '/server': 'role.html',
   '/cook': 'role.html',
   '/carrier': 'role.html',
+  '/handoff': 'role.html',
   '/display': 'display.html',
   '/admin': 'admin.html',
   '/login': 'login.html',
 };
 // Pages that need the passcode (when one is set). /display stays public for the customer monitor.
-const PROTECTED_PAGES = new Set(['/', '/server', '/cook', '/carrier', '/admin']);
+const PROTECTED_PAGES = new Set(['/', '/server', '/handoff', '/cook', '/carrier', '/admin']);
 
 // ---------------------------------------------------------------------------
 // Passcode
@@ -759,6 +765,28 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && pathname === '/api/backup-info') return json(res, 200, { sheetUrl: SHEETS_VIEW_URL });
 
   // Queue every order for the sheet — for orders created before the backup was set up, or a fresh sheet.
+  // Help requests from staff screens (the cook's 「ヘルプを呼ぶ」). Shown on /admin until handled.
+  if (req.method === 'POST' && pathname === '/api/help') {
+    const body = await readBody(req);
+    const device = deviceOf(body);
+    let request = helpRequests.find((h) => h.device === device);
+    if (!request) {
+      request = { id: ++helpSeq, device, role: String(body.role || '?').slice(0, 20), at: Date.now() };
+      helpRequests.push(request);
+      console.log(`  🆘 HELP requested by ${device}`);
+    }
+    broadcast();
+    return json(res, 201, { help: request });
+  }
+
+  const hm = pathname.match(/^\/api\/help\/(\d+)\/resolve$/);
+  if (req.method === 'POST' && hm) {
+    const i = helpRequests.findIndex((h) => h.id === Number(hm[1]));
+    if (i >= 0) helpRequests.splice(i, 1);
+    broadcast();
+    return json(res, 200, { ok: true });
+  }
+
   if (req.method === 'POST' && pathname === '/api/reset-day') {
     const body = await readBody(req);
     const day = Number(body.day);

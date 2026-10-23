@@ -1,6 +1,7 @@
 // Host / admin screen: settings, stats, device list, and manual override of any order.
 import {
-  ROLE_LABEL, STATUS_LABEL, connect, errorMessage, esc, getJSON, pad, post, toast, transition,
+  ROLE_LABEL, STATUS_LABEL, beep, connect, enableSound, errorMessage, esc, fmtElapsed, getJSON, pad, post, serverNow,
+  toast, transition,
 } from './common.js';
 
 const form = document.getElementById('settings');
@@ -21,6 +22,7 @@ connect({
     if (!formDirty) fillForm(s.config);
     renderDevices(s);
     renderSync(s.sync);
+    renderHelp(s.help ?? []);
     document.getElementById('logout').hidden = !s.auth;
     // Debounce the heavier queries.
     clearTimeout(refreshTimer);
@@ -71,7 +73,7 @@ function renderDevices(s) {
       .map((d) => `<div class="dev"><span>${esc(ROLE_LABEL[d.role] ?? d.role)}</span><small>${esc(d.name)}</small></div>`)
       .join('') || '<p class="empty-note">なし</p>';
   const base = s.lan?.[0] ?? location.origin;
-  document.getElementById('links').innerHTML = ['server', 'cook', 'carrier', 'display']
+  document.getElementById('links').innerHTML = ['server', 'handoff', 'cook', 'carrier', 'display']
     .map((p) => `<a href="/${p}" target="_blank">${ROLE_LABEL[p]}</a>`)
     .join('') + `<p style="margin:4px 0 10px;color:var(--muted);font-size:13px">他の端末からは <b>${esc(base)}</b>/server など</p>`;
 }
@@ -325,3 +327,47 @@ function rebuildFromLog(events, day) {
   }
   return [...orders.values()];
 }
+
+// --- Help requests (e.g. the cook's 「ヘルプを呼ぶ」) ---------------------------
+
+const helpEl = document.getElementById('help-alert');
+let helpOpen = [];
+let soundOn = false;
+
+function renderHelp(list) {
+  const fresh = list.some((h) => !helpOpen.some((o) => o.id === h.id));
+  helpOpen = list;
+  helpEl.hidden = list.length === 0;
+  document.title = list.length ? `🆘 ヘルプ (${list.length}) — Candy Cloud 管理` : 'Candy Cloud 管理';
+  if (!list.length) return;
+  helpEl.innerHTML = `
+    <h2>🆘 ヘルプ要請 (${list.length})
+      <button class="help-sound" data-action="sound" type="button">${soundOn ? '🔔 通知音オン' : '🔕 通知音をオンにする'}</button></h2>
+    ${list.map((h) => `
+      <div class="help-row">
+        <span>${esc(ROLE_LABEL[h.role] ?? h.role)}</span><small style="opacity:.8">${esc(h.device)}</small>
+        <span class="since" data-help-since="${h.at}">${fmtElapsed(serverNow() - h.at)}</span>
+        <button class="btn" data-action="resolve" data-id="${h.id}" type="button">対応済み</button>
+      </div>`).join('')}`;
+  if (fresh) beep(988, 0.25, 3);
+}
+
+helpEl.addEventListener('click', async (e) => {
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  if (el.dataset.action === 'sound') {
+    soundOn = await enableSound();
+    renderHelp(helpOpen);
+    if (soundOn) beep(988, 0.2, 1);
+  }
+  if (el.dataset.action === 'resolve') {
+    const r = await post(`/api/help/${el.dataset.id}/resolve`, { device: 'admin' });
+    if (!r.ok) toast(errorMessage(r), { kind: 'error' });
+  }
+});
+
+// Keep the waiting time ticking, and keep reminding while a request is open (when sound is on).
+setInterval(() => {
+  for (const el of helpEl.querySelectorAll('[data-help-since]')) el.textContent = fmtElapsed(serverNow() - Number(el.dataset.helpSince));
+}, 1000);
+setInterval(() => { if (helpOpen.length) beep(988, 0.25, 2); }, 8000);
