@@ -64,6 +64,8 @@ export function connect({ role, name, onState }) {
   const badge = document.getElementById('conn');
   let es;
   let lastMsg = Date.now();
+  let gotStream = false; // has the live stream delivered anything yet?
+  let polling = false;   // fallback: fetch the state every 1.5s instead of streaming
 
   const setConn = (ok) => {
     if (!badge) return;
@@ -73,26 +75,30 @@ export function connect({ role, name, onState }) {
   };
 
   let boot = null;
+  const handleState = (state) => {
+    lastMsg = Date.now();
+    // Server restarted (possibly with new code): reload so this screen runs the matching version.
+    if (boot && state.boot && state.boot !== boot) return location.reload();
+    boot = state.boot ?? boot;
+    clockOffset = state.now - Date.now();
+    setConn(true);
+    systemBanner(state.codeUpdated
+      ? 'サーバーのコードが更新されています — ホストPCで npm start を再起動してください'
+      : '');
+    try {
+      onState(state);
+    } catch (err) {
+      // Never leave the screen silently stuck on "connecting".
+      console.error(err);
+      systemBanner(`画面の更新に失敗しました (${err.message}) — サーバーを再起動してください`);
+    }
+  };
+
   const open = () => {
     es = new EventSource(`/api/events?role=${encodeURIComponent(role)}&name=${encodeURIComponent(name)}`);
     es.addEventListener('state', (e) => {
-      lastMsg = Date.now();
-      const state = JSON.parse(e.data);
-      // Server restarted (possibly with new code): reload so this screen runs the matching version.
-      if (boot && state.boot && state.boot !== boot) return location.reload();
-      boot = state.boot ?? boot;
-      clockOffset = state.now - Date.now();
-      setConn(true);
-      systemBanner(state.codeUpdated
-        ? 'サーバーのコードが更新されています — ホストPCで npm start を再起動してください'
-        : '');
-      try {
-        onState(state);
-      } catch (err) {
-        // Never leave the screen silently stuck on "connecting".
-        console.error(err);
-        systemBanner(`画面の更新に失敗しました (${err.message}) — サーバーを再起動してください`);
-      }
+      gotStream = true;
+      handleState(JSON.parse(e.data));
     });
     es.addEventListener('ping', () => {
       lastMsg = Date.now();
@@ -101,8 +107,30 @@ export function connect({ role, name, onState }) {
     es.onerror = () => setConn(false);
   };
 
-  // Watchdog: if nothing arrives for 25s (server pings every 10s), force a fresh connection.
+  // Some tunnels/proxies (e.g. a free Cloudflare quick tunnel) hold back streamed responses, so the live
+  // stream never delivers anything. If nothing has arrived after 6s, switch to polling the state instead.
+  const startPolling = () => {
+    if (polling) return;
+    polling = true;
+    es.close();
+    const poll = async () => {
+      try {
+        const res = await fetch('/api/state', { cache: 'no-store' });
+        if (res.status === 401) return toLogin();
+        if (!res.ok) throw new Error(res.status);
+        handleState(await res.json());
+      } catch {
+        setConn(false);
+      }
+    };
+    poll();
+    setInterval(poll, 1500);
+  };
+  setTimeout(() => { if (!gotStream) startPolling(); }, 6000);
+
+  // Watchdog: if the stream goes quiet for 25s (server pings every 10s), force a fresh connection.
   setInterval(() => {
+    if (polling) return;
     if (Date.now() - lastMsg > 25_000) {
       setConn(false);
       es.close();

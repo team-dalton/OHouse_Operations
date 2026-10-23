@@ -706,9 +706,13 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && pathname === '/api/events') {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-store',
+      // no-transform stops proxies (e.g. a Cloudflare tunnel) from compressing — and so buffering — the stream.
+      'Cache-Control': 'no-store, no-transform',
+      'X-Accel-Buffering': 'no',
       Connection: 'keep-alive',
     });
+    // A comment line of padding first: some proxies hold back the first few KB before passing anything on.
+    res.write(`:${' '.repeat(2048)}\n\n`);
     clients.set(res, {
       role: url.searchParams.get('role') || '?',
       name: url.searchParams.get('name') || '?',
@@ -849,7 +853,8 @@ const server = http.createServer(async (req, res) => {
   try {
     if (url.pathname.startsWith('/api/')) {
       // Public: the live feed (the customer display needs it) and login/logout themselves.
-      const open = (req.method === 'GET' && url.pathname === '/api/events')
+      // /api/state is the polling fallback for the same feed, so it is public too (read-only).
+      const open = (req.method === 'GET' && (url.pathname === '/api/events' || url.pathname === '/api/state'))
         || url.pathname === '/api/login' || url.pathname === '/api/logout';
       if (!open && !isAuthed(req)) throw new HttpError(401, 'unauthorized');
       await handleApi(req, res, url);
