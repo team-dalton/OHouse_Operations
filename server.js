@@ -871,6 +871,16 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+// Most common start-up mistake: a server is already running (often in another terminal tab).
+server.on('error', (err) => {
+  if (err.code !== 'EADDRINUSE') throw err;
+  console.error(`\n  ⚠ ポート ${PORT} はすでに使われています — サーバーがもう起動しています。`);
+  console.error(`    起動中のサーバーのターミナルで Ctrl+C を押して止めてから、もう一度 npm start してください。`);
+  console.error(`  ⚠ Port ${PORT} is already in use — a server is already running.`);
+  console.error(`    Stop it with Ctrl+C in its terminal tab, then run npm start again.\n`);
+  process.exit(1);
+});
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`\n  Candy Cloud 注文管理 running\n`);
   console.log(`  This machine : http://localhost:${PORT}`);
