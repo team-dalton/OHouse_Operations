@@ -204,7 +204,9 @@ function parseCSV(text) {
   if (field !== '' || row.length) { row.push(field); rows.push(row); }
   const [header = [], ...data] = rows.filter((r) => r.some((v) => v.trim() !== ''));
   const keys = header.map((h) => h.trim());
-  return data.map((r) => Object.fromEntries(keys.map((k, i) => [k, r[i] ?? ''])));
+  const out = data.map((r) => Object.fromEntries(keys.map((k, i) => [k, r[i] ?? ''])));
+  out.header = keys;
+  return out;
 }
 
 const importFile = document.getElementById('import-file');
@@ -216,13 +218,21 @@ importFile.addEventListener('change', async () => {
 });
 
 document.getElementById('import-btn').addEventListener('click', async () => {
-  const rows = parseCSV(importText.value);
-  if (!rows.length || !('id' in rows[0]) || !('status' in rows[0])) {
-    return toast('CSV が読み込めません（id・status の列が必要です）', { kind: 'error' });
+  const parsed = parseCSV(importText.value);
+  const header = parsed.header ?? [];
+  const fromLog = header.includes('変更後') && header.includes('id');
+  if (!fromLog && !(header.includes('id') && header.includes('status'))) {
+    return toast('CSV が読み込めません（orders シートか log シートの CSV を選んでください）', { kind: 'error', ms: 8000 });
   }
+  if (!parsed.length) {
+    return toast('CSV にデータ行がありません（見出しだけです）。log シートの CSV からも復元できます', { kind: 'error', ms: 10000 });
+  }
+  // The sheet's log tab: rebuild each order from its change history.
+  const rows = fromLog ? rebuildFromLog(parsed, state.config.day) : parsed;
   const mode = document.querySelector('input[name=import-mode]:checked').value;
   const inProgress = rows.filter((r) => ['ordered', 'made', 'delivered'].includes(r.status)).length;
-  const message = `${rows.length}件の注文を${mode === 'replace' ? '「すべて置き換え」で' : ''}復元します（うち進行中 ${inProgress}件）。`
+  const message = (fromLog ? `log シートの変更履歴 ${parsed.length}行から注文を組み立てました（${state.config.day}日目として復元）。\n` : '')
+    + `${rows.length}件の注文を${mode === 'replace' ? '「すべて置き換え」で' : ''}復元します（うち進行中 ${inProgress}件）。`
     + (mode === 'replace' ? '\n\n⚠ 今サーバーにある注文はすべて削除されます。' : '')
     + '\n\nよろしいですか？';
   if (!confirm(message)) return;
@@ -265,3 +275,53 @@ document.getElementById('reset-day').addEventListener('click', async () => {
     toast(errorMessage(r), { kind: 'error' });
   }
 });
+
+// Rebuilds orders from the sheet's log tab (one row per change: time, from, to, device, id, ticket, product, status).
+// Used when the orders tab is lost or emptied; the log has everything needed.
+const JA_STATUS = { 受付済: 'ordered', 調理完了: 'made', 運搬完了: 'delivered', 注文完了: 'completed', 取消: 'cancelled' };
+const STAGE_COL = { made: 'made_at', delivered: 'delivered_at', completed: 'completed_at' };
+
+function rebuildFromLog(events, day) {
+  const orders = new Map();
+  for (const e of events) {
+    const id = Number(e.id);
+    const t = Date.parse(`${String(e['時刻 (JST)'] ?? '').trim().replace(' ', 'T')}+09:00`);
+    if (!id || Number.isNaN(t)) continue;
+    const from = String(e['変更前'] ?? '').trim();
+    const to = String(e['変更後'] ?? '').trim();
+    const o = orders.get(id) ?? {
+      id, day, ticket_no: '', product: '', status: 'ordered', created_at: t, made_at: '', delivered_at: '',
+      completed_at: '', cancelled_at: '', updated_by: '', is_spare: 0,
+    };
+    const ticket = String(e['食券'] ?? '').trim();
+    if (ticket && ticket !== '予備') o.ticket_no = Number(ticket);
+    if (String(e['商品'] ?? '').trim()) o.product = String(e['商品']).trim();
+
+    if (to === 'spare') {
+      // Made as a spare (or returned to the spares when its order was cancelled).
+      o.is_spare = 1;
+      o.created_at = t;
+      o.made_at = o.made_at || t;
+    } else if (from === 'spare') {
+      o.created_at = t; // a new order picked up this spare
+    } else if (!from && to === 'ordered') {
+      o.created_at = t;
+    } else if (to === 'cancelled') {
+      o.cancelled_at = t;
+    } else if (to === 'reset') {
+      o.day = 0;
+    } else if (to === 'ordered' || STAGE_COL[to]) {
+      // Forward (or undo): stages up to `to` keep/get a time, later stages are cleared.
+      const k = ['ordered', 'made', 'delivered', 'completed'].indexOf(to);
+      ['made', 'delivered', 'completed'].forEach((stage, i) => {
+        const col = STAGE_COL[stage];
+        o[col] = i + 1 <= k ? o[col] || t : '';
+      });
+      o.cancelled_at = '';
+    }
+    o.status = JA_STATUS[String(e['状態'] ?? '').trim()] ?? o.status;
+    o.updated_by = String(e['端末'] ?? '').trim() || o.updated_by;
+    orders.set(id, o);
+  }
+  return [...orders.values()];
+}

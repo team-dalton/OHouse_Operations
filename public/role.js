@@ -20,6 +20,7 @@ const flashUntil = new Map();    // order id → timestamp; cards flash while ne
 let seen = null;                 // ids already shown in this role's action list
 let creating = false;
 let selectedProduct = null; // 受付: product tapped but not yet confirmed
+let mainChosen = false;      // 受付: main product (綿飴) tapped; now choosing its topping
 let makingSpare = false;
 let lastCreated = null;          // { order, at } for the server's "hand over ticket #" callout
 
@@ -88,22 +89,40 @@ function card(o, { label, big = false, selectable = false, showProduct = true } 
 function renderServer(list) {
   const { products } = state.config;
   const { pending, estWaitMin } = state.queue;
+  // Two steps: the main product (綿飴 barbe à.) first, then its topping (or none), then confirm.
+  const [main, ...toppings] = Object.keys(products);
+  if (products[main].soldOut) mainChosen = false;
   if (selectedProduct && products[selectedProduct]?.soldOut) selectedProduct = null;
-  const buttons = Object.keys(products).map((k) => {
-    // Names are "brand/日本語"; show the brand large and the Japanese underneath.
-    const [main, sub] = products[k].name.split('/');
-    return `
-    <button class="product-btn p${k} ${selectedProduct === k ? 'selected' : ''}" data-action="select" data-product="${k}"
-            ${products[k].soldOut || creating ? 'disabled' : ''}>
-      <span class="pname">${esc(main)}</span>${sub ? `<span class="psub">${esc(sub)}</span>` : ''}
-      <small>${products[k].soldOut ? '売り切れ' : selectedProduct === k ? '選択中' : 'タップして選択'}</small>`;
-  }).map((html) => `${html}
-    </button>`).join('');
+  const split = (k) => products[k].name.split('/'); // "brand/日本語"
 
-  // Second step: confirm (or back out) before the order is registered.
+  let buttons;
+  if (!mainChosen) {
+    const [brand, ja] = split(main);
+    buttons = `
+      <button class="product-btn main-btn p${main}" data-action="main" ${products[main].soldOut || creating ? 'disabled' : ''}>
+        <span class="pname">${esc(brand)}</span>${ja ? `<span class="psub">${esc(ja)}</span>` : ''}
+        <small>${products[main].soldOut ? '売り切れ' : 'タップしてトッピングを選ぶ'}</small>
+      </button>`;
+  } else {
+    const option = (k, label, sub) => `
+      <button class="product-btn p${k} ${selectedProduct === k ? 'selected' : ''}" data-action="select" data-product="${k}"
+              ${products[k].soldOut || creating ? 'disabled' : ''}>
+        <span class="pname">${esc(label)}</span>${sub ? `<span class="psub">${esc(sub)}</span>` : ''}
+        <small>${products[k].soldOut ? '売り切れ' : selectedProduct === k ? '選択中' : 'タップして選択'}</small>
+      </button>`;
+    buttons = `
+      <div class="main-chosen"><span class="chip p${main}">${esc(products[main].name)}</span> のトッピングを選んでください
+        <button class="linkish" data-action="unselect" type="button">戻る</button></div>
+      ${option(main, 'トッピングなし', split(main)[1] ? `${split(main)[1]}のみ` : '')}
+      ${toppings.map((k) => option(k, ...split(k))).join('')}`;
+  }
+
+  // Last step: confirm (or back out) before the order is registered.
+  const toppingLabel = selectedProduct === main ? 'トッピングなし' : selectedProduct ? products[selectedProduct].name : '';
   const confirmBar = selectedProduct ? `
     <div class="confirm-bar">
-      <div class="confirm-text"><span class="chip p${selectedProduct}">${esc(products[selectedProduct].name)}</span> を注文しますか？</div>
+      <div class="confirm-text"><span class="chip p${main}">${esc(split(main)[0])}</span> ＋
+        <span class="chip p${selectedProduct}">${esc(toppingLabel)}</span> を注文しますか？</div>
       <div class="confirm-actions">
         <button class="btn secondary" data-action="unselect" type="button">やめる</button>
         <button class="btn big" data-action="create" data-product="${selectedProduct}" type="button" ${creating ? 'disabled' : ''}>注文を確定</button>
@@ -201,14 +220,20 @@ right.addEventListener('click', (e) => {
   const order = state.active.find((o) => o.id === id);
 
   switch (el.dataset.action) {
+    case 'main':
+      mainChosen = true;
+      selectedProduct = null;
+      return render();
     case 'select':
       selectedProduct = selectedProduct === el.dataset.product ? null : el.dataset.product;
       return render();
     case 'unselect':
       selectedProduct = null;
+      mainChosen = false;
       return render();
     case 'create':
       selectedProduct = null;
+      mainChosen = false;
       return createOrder(el.dataset.product);
     case 'advance':
       return order && advance([order], R.to);

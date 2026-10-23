@@ -82,7 +82,7 @@
     <section class="pane">
       <h2>データ復元 (インポート)</h2>
       <p class="hint">スプレッドシートの <b>orders</b> シートを CSV でダウンロード（ファイル → ダウンロード → CSV）するか、
-        「CSV エクスポート」で保存したファイルを選んでください。</p>
+        「CSV エクスポート」で保存したファイルを選んでください。orders シートが空のときは <b>log</b> シートの CSV からも復元できます。</p>
       <input type="file" id="import-file" accept=".csv,text/csv">
       <textarea id="import-text" rows="4" placeholder="または CSV の中身をここに貼り付け"></textarea>
       <label class="radio"><input type="radio" name="import-mode" value="merge" checked> 追加・更新（同じ id の注文は上書き）</label>
