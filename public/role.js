@@ -55,6 +55,14 @@ function render() {
   setHTML(left, progressHTML(state, R.acts, { cancel: role === 'server' }));
 
   const list = R.list();
+  // An order this screen was working on got cancelled elsewhere (e.g. at 受付): say so, loudly.
+  if (seen && role !== 'server') {
+    const gone = (state.recentCancelled ?? []).filter((o) => seen.has(o.id));
+    for (const o of gone) {
+      toast(`#${pad(o.ticket_no)} は取り消されました`, { kind: 'error', ms: 8000 });
+      beep(440, 0.25, 2);
+    }
+  }
   if (seen) {
     const fresh = list.filter((o) => !seen.has(o.id));
     if (fresh.length) beep(...R.sound);

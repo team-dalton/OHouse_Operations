@@ -215,6 +215,17 @@ try {
     assert.equal(r.status, 200);
   });
 
+  await test('a cancelled order stays visible (as cancelled) for every screen', async () => {
+    const { data } = await post('/api/orders', { product: 'A', device: 'server-abcd' });
+    await post(`/api/orders/${data.order.id}/transition`, { from: 'ordered', to: 'cancelled', device: 'server-abcd' });
+    const s = await fetch(`${BASE}/api/state`).then((r) => r.json());
+    assert.ok(!s.active.some((o) => o.id === data.order.id), 'no longer active');
+    const c = s.recentCancelled.find((o) => o.id === data.order.id);
+    assert.ok(c, 'listed as recently cancelled');
+    assert.equal(c.status, 'cancelled');
+    assert.equal(c.updated_by, 'server-abcd');
+  });
+
   await test('daily caps default to 300 cotton candy and 100 per topping', async () => {
     const s = await fetch(`${BASE}/api/state`).then((r) => r.json());
     assert.equal(s.config.dailyCap, 300);

@@ -389,6 +389,12 @@ function snapshot() {
     .prepare(`SELECT * FROM orders WHERE ticket_no IS NULL AND status IN ('made','delivered')
               ORDER BY made_at, id`)
     .all();
+  // Cancelled in the last 10 minutes: every screen shows them greyed out, so staff elsewhere (e.g. the cook)
+  // can see what happened. Only today's orders, so a day reset doesn't flood the list.
+  const recentCancelled = db
+    .prepare(`SELECT * FROM orders WHERE status = 'cancelled' AND ticket_no IS NOT NULL AND day = ?
+              AND cancelled_at >= ? ORDER BY created_at, id`)
+    .all(cfg.day, now - 10 * 60_000);
   const recentCompleted = db
     .prepare(`SELECT * FROM orders WHERE status = 'completed' ORDER BY completed_at DESC LIMIT 8`)
     .all();
@@ -398,6 +404,7 @@ function snapshot() {
     codeUpdated: codeChangedSinceStart(),
     config: cfg,
     active,
+    recentCancelled,
     spares,
     recentCompleted,
     queue: {

@@ -278,11 +278,28 @@ export function startOverlay(title, { fullscreen = false } = {}) {
 }
 
 // --- Left pane: overall progress -----------------------------------------
+function cancelledRowHTML(o, config, withCancelColumn) {
+  const at = new Date(o.cancelled_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+  const by = ROLE_LABEL[String(o.updated_by ?? '').split('-')[0]] ?? '';
+  return `
+    <li class="cancelled ${withCancelColumn ? 'with-cancel' : ''}">
+      <span class="tno">#${pad(o.ticket_no)}</span>
+      <span class="chip p${esc(o.product)}">${esc(config.products[o.product]?.name ?? o.product)}</span>
+      <span class="steps"><span class="cancel-badge">取消</span><small>${at} ${by ? `${esc(by)}で取消` : '取消済み'}</small></span>
+      <span></span>
+      ${withCancelColumn ? '<span></span>' : ''}
+    </li>`;
+}
+
 // `cancel`: show a 取消 button on every row (the 受付 screen cancels orders from here).
 export function progressHTML(state, highlightStatus, { cancel = false } = {}) {
   const { active, config, queue } = state;
-  const rows = active
+  // Recently cancelled orders stay in the list, greyed out, so everyone can see what happened.
+  const list = [...active, ...(state.recentCancelled ?? [])]
+    .sort((a, b) => a.created_at - b.created_at || a.id - b.id);
+  const rows = list
     .map((o) => {
+      if (o.status === 'cancelled') return cancelledRowHTML(o, config, cancel);
       const step = FLOW.indexOf(o.status);
       const dots = STEP_LABEL.map(
         (label, i) => `<span class="step ${i <= step ? 'done' : ''} ${i === step ? 'cur' : ''}">${label}</span>`
