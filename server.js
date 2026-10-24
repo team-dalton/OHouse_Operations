@@ -119,15 +119,17 @@ const TS_COL = { made: 'made_at', delivered: 'delivered_at', completed: 'complet
 
 const DEFAULT_CONFIG = {
   products: {
-    A: { name: 'barbe à./綿飴', soldOut: false },
-    B: { name: 'Caramella al./ピュレレモン', soldOut: false },
-    C: { name: 'Gemma f./パチパチ', soldOut: false },
-    D: { name: 'Gommose/ピュレブドウ', soldOut: false },
+    A: { name: 'barbe à./綿飴' },
+    B: { name: 'Caramella al./ピュレレモン' },
+    C: { name: 'Gemma f./パチパチ' },
+    D: { name: 'Gommose/ピュレブドウ' },
   },
   day: 1,
   nextTicket: 1,
   backlogCount: 8,    // pending orders above this → backlog mode
   backlogMinutes: 10, // oldest pending order older than this → backlog mode
+  dailyCap: 300,      // cotton candy per day (all orders, with or without a topping)
+  toppingCap: 100,    // per topping per day
 };
 
 function getConfig() {
@@ -185,7 +187,13 @@ function createOrder(product, device) {
   const cfg = getConfig();
   const p = cfg.products[product];
   if (!p) throw new HttpError(400, 'unknown_product');
-  if (p.soldOut) throw new HttpError(409, 'sold_out');
+  // Daily caps: 300 cotton candy in total, 100 of each topping (the first product is plain 綿飴, no topping).
+  const sold = salesToday(cfg.day);
+  if (sold.total >= cfg.dailyCap) throw new HttpError(409, 'daily_cap', { cap: cfg.dailyCap });
+  const [main] = Object.keys(cfg.products);
+  if (product !== main && (sold.byProduct[product] ?? 0) >= cfg.toppingCap) {
+    throw new HttpError(409, 'topping_cap', { cap: cfg.toppingCap });
+  }
 
   // Node is single-threaded and DatabaseSync is synchronous, so this read-increment-write is atomic.
   // Skip only numbers still in use by an in-progress order; numbers of finished or cancelled orders are free,
@@ -268,6 +276,14 @@ function makeSpare(device) {
     .run(getConfig().day, now, now, device);
   recordEvent(lastInsertRowid, null, 'spare', device, now);
   return { spare: getOrder(lastInsertRowid) };
+}
+
+// Orders sold on a day (cancelled ones and unclaimed spares don't count), in total and per product.
+function salesToday(day) {
+  const rows = db.prepare(`SELECT product, COUNT(*) AS n FROM orders
+                           WHERE day = ? AND ticket_no IS NOT NULL AND status != 'cancelled' GROUP BY product`).all(day);
+  const byProduct = Object.fromEntries(rows.map((r) => [r.product, r.n]));
+  return { total: rows.reduce((a, r) => a + r.n, 0), byProduct };
 }
 
 function getOrder(id) {
@@ -392,6 +408,7 @@ function snapshot() {
     devices: [...clients.values()].map(({ role, name, since }) => ({ role, name, since })),
     lan: lanUrls(),
     sync: syncInfo(),
+    sales: { ...salesToday(cfg.day), dailyCap: cfg.dailyCap, toppingCap: cfg.toppingCap },
     help: helpRequests,
     auth: Boolean(PASSCODE),
   };
@@ -819,10 +836,9 @@ async function handleApi(req, res, url) {
       const p = body.products?.[key];
       if (!p) continue;
       if (typeof p.name === 'string' && p.name.trim()) cfg.products[key].name = p.name.trim().slice(0, 30);
-      if (typeof p.soldOut === 'boolean') cfg.products[key].soldOut = p.soldOut;
     }
     const prev = { day: cfg.day, nextTicket: cfg.nextTicket };
-    for (const key of ['day', 'nextTicket', 'backlogCount', 'backlogMinutes']) {
+    for (const key of ['day', 'nextTicket', 'backlogCount', 'backlogMinutes', 'dailyCap', 'toppingCap']) {
       const v = Number(body[key]);
       if (Number.isInteger(v) && v >= 0 && v < 100_000) cfg[key] = v;
     }

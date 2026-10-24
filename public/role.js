@@ -96,25 +96,33 @@ function renderServer(list) {
   // Everything is on screen at once: the main product (綿飴) on the left with 「トッピングなし」 under it,
   // the toppings on the right. The toppings and 「トッピングなし」 unlock only after 綿飴 is selected.
   const [main, ...toppings] = Object.keys(products);
-  if (products[main].soldOut) mainChosen = false;
-  if (selectedProduct && (products[selectedProduct]?.soldOut || !mainChosen)) selectedProduct = null;
+  // Daily caps: 300 cotton candy in total, 100 per topping. A topping is also limited by the cotton candy left.
+  const sales = state.sales ?? { total: 0, byProduct: {}, dailyCap: Infinity, toppingCap: Infinity };
+  const mainLeft = Math.max(0, sales.dailyCap - sales.total);
+  const left = (k) => (k === main ? mainLeft
+    : Math.min(mainLeft, Math.max(0, sales.toppingCap - (sales.byProduct[k] ?? 0))));
+  const capLabel = (k) => (left(k) === 0 ? '本日分終了' : `残り ${left(k)}`);
+  if (mainLeft === 0) mainChosen = false;
+  if (selectedProduct && (left(selectedProduct) === 0 || !mainChosen)) selectedProduct = null;
   const split = (k) => products[k].name.split('/'); // "brand/日本語"
   const locked = !mainChosen || creating;
 
   const option = (k, label, sub, cls = '') => `
     <button class="product-btn p${k} ${cls} ${selectedProduct === k ? 'selected' : ''}" data-action="select" data-product="${k}"
-            ${products[k].soldOut || locked ? 'disabled' : ''}>
+            ${left(k) === 0 || locked ? 'disabled' : ''}>
       <span class="pname">${esc(label)}</span>${sub ? `<span class="psub">${esc(sub)}</span>` : ''}
-      <small>${products[k].soldOut ? '売り切れ' : !mainChosen ? '綿飴を先に選択' : selectedProduct === k ? '選択中' : 'タップして選択'}</small>
+      <small>${left(k) === 0 ? '本日分終了' : !mainChosen ? '綿飴を先に選択' : selectedProduct === k ? '選択中' : 'タップして選択'}</small>
+      ${left(k) === 0 ? '' : `<span class="pleft">${capLabel(k)}</span>`}
     </button>`;
 
   const [brand, ja] = split(main);
   const buttons = `
     <div class="order-main">
       <button class="product-btn main-btn p${main} ${mainChosen ? 'selected' : ''}" data-action="main"
-              ${products[main].soldOut || creating ? 'disabled' : ''}>
+              ${mainLeft === 0 || creating ? 'disabled' : ''}>
         <span class="pname">${esc(brand)}</span>${ja ? `<span class="psub">${esc(ja)}</span>` : ''}
-        <small>${products[main].soldOut ? '売り切れ' : mainChosen ? '選択中 — トッピングを選んでください' : 'まずタップ'}</small>
+        <small>${mainLeft === 0 ? '本日分終了' : mainChosen ? '選択中 — トッピングを選んでください' : 'まずタップ'}</small>
+        ${mainLeft === 0 ? '' : `<span class="pleft">本日 ${sales.total} / ${sales.dailyCap}・残り ${mainLeft}</span>`}
       </button>
       ${option(main, 'トッピングなし', ja ? `${ja}のみ` : '', 'plain-btn')}
     </div>

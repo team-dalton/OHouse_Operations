@@ -193,6 +193,10 @@ main.split {
 .product-btn.main-btn .psub { font-size: 18px; }
 .order-toppings .product-btn { flex: 1; min-height: 88px; }
 .product-btn.plain-btn { min-height: 76px; border-style: dashed; }
+.product-btn .pleft {
+  font-size: 12px; font-weight: 800; color: var(--ink-2); background: var(--bg);
+  padding: 2px 10px; border-radius: 999px; font-variant-numeric: tabular-nums;
+}
 .product-btn.plain-btn::before { display: none; }
 .product-btn:disabled { opacity: .38; box-shadow: none; }
 .product-btn.main-btn.selected small { color: var(--red); }

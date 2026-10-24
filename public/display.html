@@ -45,7 +45,7 @@
     }
     .waiting h2 .pill:empty { display: none; }
     .waiting h2 .pill.wait { background: var(--red-tint); color: var(--red); }
-    .trk-viewport { flex: 1; min-height: 0; overflow: hidden; }
+    .trk-viewport { flex: 1; min-height: 0; overflow-x: clip; overflow-y: visible; }
     /* Pages sit side by side: rows fill one page-wide column, then the next. Paging slides the list left. */
     .trk-list {
       display: grid; grid-auto-flow: column; grid-auto-columns: 100%; column-gap: 4vw; row-gap: 1.2vh;
@@ -75,12 +75,14 @@
     }
     .trk-step.done { color: var(--ink-2); }
     .trk-step.done i { background: var(--red); border-color: var(--red); }
-    .trk-step.active { color: var(--red); font-weight: 900; }
-    .trk-step.active i { border-color: var(--red); background: #fff; box-shadow: 0 0 0 .5vh var(--red-tint); }
+    .trk-step.active { color: var(--red); font-weight: 900; z-index: 3; } /* above neighbouring rows */
+    .trk-step.active i { border-color: var(--red); background: #fff; box-shadow: 0 0 0 .5vh var(--red-tint), 0 .4vh 1vh rgba(225, 24, 44, .35); }
     .trk-step.active i::before { content: ""; position: absolute; inset: .45vh; border-radius: 50%; background: var(--red); }
     /* The ping: a ring that keeps expanding out of the current step. Rows are staggered into a gentle wave. */
     .trk-step.active i::after {
       content: ""; position: absolute; inset: -.45vh; border-radius: 50%; border: .35vh solid var(--red);
+      /* glow + drop shadow so the ring reads as floating in front of the rows, not painted on them */
+      box-shadow: 0 0 1.2vh rgba(225, 24, 44, .55), 0 .6vh 1.4vh rgba(17, 17, 19, .18);
       animation: ping 1.8s cubic-bezier(0, 0, .2, 1) infinite; animation-delay: var(--d, 0s);
     }
     .trk-row.advanced { animation: trk-flash 1.8s ease-out; }
@@ -91,7 +93,7 @@
     .trk-pages i.on { background: var(--red); width: 3vh; border-radius: 999px; }
     .trk-page-no { font-size: 1.8vh; font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; }
 
-    @keyframes ping { 0% { transform: scale(1); opacity: .9; } 80%, 100% { transform: scale(2.6); opacity: 0; } }
+    @keyframes ping { 0% { transform: scale(1); opacity: .95; } 80%, 100% { transform: scale(3); opacity: 0; } }
     @keyframes ping-big { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(4); opacity: 0; } }
     @keyframes trk-in { from { opacity: 0; transform: translateY(3vh) scale(.98); } }
     @keyframes trk-flash { 0% { background: var(--red-tint-2); transform: scale(1.025); } 100% { background: var(--bg); transform: none; } }

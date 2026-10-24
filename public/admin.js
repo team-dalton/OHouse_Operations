@@ -36,28 +36,30 @@ function fillForm(cfg) {
   if (fields.dataset.keys !== keys.join()) {
     fields.dataset.keys = keys.join();
     fields.innerHTML = keys.map((k) => `
-      <label>トッピング${k} 名前 <input type="text" name="name${k}"></label>
-      <label>トッピング${k} 売り切れ <input type="checkbox" name="soldOut${k}"></label>`).join('');
+      <label>商品${k} 名前 <input type="text" name="name${k}"></label>`).join('');
   }
   for (const k of keys) {
     form[`name${k}`].value = cfg.products[k].name;
-    form[`soldOut${k}`].checked = cfg.products[k].soldOut;
   }
   form.day.value = cfg.day;
   form.nextTicket.value = cfg.nextTicket;
   form.backlogCount.value = cfg.backlogCount;
   form.backlogMinutes.value = cfg.backlogMinutes;
+  form.dailyCap.value = cfg.dailyCap;
+  form.toppingCap.value = cfg.toppingCap;
 }
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const r = await post('/api/settings', {
     products: Object.fromEntries(Object.keys(state.config.products).map((k) =>
-      [k, { name: form[`name${k}`].value, soldOut: form[`soldOut${k}`].checked }])),
+      [k, { name: form[`name${k}`].value }])),
     day: form.day.value,
     nextTicket: form.nextTicket.value,
     backlogCount: form.backlogCount.value,
     backlogMinutes: form.backlogMinutes.value,
+    dailyCap: form.dailyCap.value,
+    toppingCap: form.toppingCap.value,
   });
   if (r.ok) {
     formDirty = false;
@@ -127,7 +129,9 @@ function renderStats(st) {
 
   statsEl.innerHTML = `
     <div class="kv">
-      ${Object.entries(products).map(([k, p]) => `<span>${esc(p.name)}</span><b>${sold(k)}</b>`).join('')}
+      <span>合計 (上限)</span><b>${Object.keys(products).reduce((n, k) => n + sold(k), 0)} / ${state.config.dailyCap}</b>
+      ${Object.entries(products).map(([k, p], i) =>
+        `<span>${esc(p.name)}</span><b>${sold(k)}${i > 0 ? ` / ${state.config.toppingCap}` : ''}</b>`).join('')}
       <span>注文完了</span><b>${count((r) => r.status === 'completed')}</b>
       <span>取消</span><b>${count((r) => r.product && r.status === 'cancelled')}</b>
       <span>予備 作成 / 使用</span><b>${st.spares.made} / ${st.spares.used}</b>

@@ -190,7 +190,8 @@ export function transition(order, to, device) {
 export function errorMessage(r) {
   if (r.status === 0) return '通信エラー — 接続を確認してください';
   if (r.data.error === 'conflict') return '他の端末で処理済みです';
-  if (r.data.error === 'sold_out') return '売り切れです';
+  if (r.data.error === 'daily_cap') return `本日の上限 (${r.data.cap}個) に達しました`;
+  if (r.data.error === 'topping_cap') return `このトッピングは本日の上限 (${r.data.cap}個) に達しました`;
   if (r.data.error === 'spare_has_no_order') return '予備には注文がありません';
   if (r.status === 404) return 'サーバーが古いバージョンです — npm start を再起動してください';
   return `エラー (${r.data.error || r.status})`;

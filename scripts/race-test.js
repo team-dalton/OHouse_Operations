@@ -215,11 +215,41 @@ try {
     assert.equal(r.status, 200);
   });
 
-  await test('sold-out product cannot be ordered', async () => {
-    await post('/api/settings', { products: { B: { soldOut: true } } });
-    const r = await post('/api/orders', { product: 'B', device: 'server' });
-    assert.equal(r.status, 409);
-    assert.equal(r.data.error, 'sold_out');
+  await test('daily caps default to 300 cotton candy and 100 per topping', async () => {
+    const s = await fetch(`${BASE}/api/state`).then((r) => r.json());
+    assert.equal(s.config.dailyCap, 300);
+    assert.equal(s.config.toppingCap, 100);
+    assert.equal(s.sales.dailyCap, 300);
+  });
+
+  await test('a topping stops at its cap; plain 綿飴 and other toppings still sell', async () => {
+    const s = await fetch(`${BASE}/api/state`).then((r) => r.json());
+    const soldB = s.sales.byProduct.B ?? 0;
+    await post('/api/settings', { toppingCap: soldB + 1 });
+    assert.equal((await post('/api/orders', { product: 'B', device: 'server' })).status, 201);
+    const over = await post('/api/orders', { product: 'B', device: 'server' });
+    assert.equal(over.status, 409);
+    assert.equal(over.data.error, 'topping_cap');
+    assert.equal((await post('/api/orders', { product: 'A', device: 'server' })).status, 201);
+    assert.equal((await post('/api/orders', { product: 'C', device: 'server' })).status, 201);
+  });
+
+  await test('the cotton candy cap stops every order, with or without a topping', async () => {
+    const s = await fetch(`${BASE}/api/state`).then((r) => r.json());
+    await post('/api/settings', { dailyCap: s.sales.total, toppingCap: 100 });
+    for (const product of ['A', 'D']) {
+      const r = await post('/api/orders', { product, device: 'server' });
+      assert.equal(r.status, 409);
+      assert.equal(r.data.error, 'daily_cap');
+    }
+  });
+
+  await test('cancelled orders do not count toward the cap', async () => {
+    const s = await fetch(`${BASE}/api/state`).then((r) => r.json());
+    const o = s.active.find((x) => x.status === 'ordered');
+    await post(`/api/orders/${o.id}/transition`, { from: 'ordered', to: 'cancelled', device: 'server' });
+    assert.equal((await post('/api/orders', { product: 'A', device: 'server' })).status, 201);
+    await post('/api/settings', { dailyCap: 300 });
   });
 } finally {
   server.kill();
