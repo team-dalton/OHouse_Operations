@@ -52,7 +52,7 @@ connect({ role, name: device, onState: (s) => { state = s; render(); } });
 
 function render() {
   if (!state) return;
-  setHTML(left, progressHTML(state, R.acts));
+  setHTML(left, progressHTML(state, R.acts, { cancel: role === 'server' }));
 
   const list = R.list();
   if (seen) {
@@ -243,6 +243,19 @@ function renderCarrier(list) {
 // Actions
 // ---------------------------------------------------------------------------
 
+// 受付: cancel any order from the progress list (asks first, so a stray tap can't cancel one).
+left.addEventListener('click', async (e) => {
+  const el = e.target.closest('[data-action=cancel]');
+  if (!el || !state) return;
+  const order = state.active.find((o) => o.id === Number(el.dataset.id));
+  if (!order || !confirm(`#${pad(order.ticket_no)} ${productName(order)} を取り消しますか？`)) return;
+  const done = await moveTo([order], 'cancelled');
+  if (done.length) {
+    if (lastCreated?.order.id === order.id) lastCreated = null;
+    toast(`#${pad(order.ticket_no)} を取り消しました`);
+  }
+});
+
 right.addEventListener('click', (e) => {
   const el = e.target.closest('[data-action]');
   if (!el || el.disabled || !state) return;
@@ -329,13 +342,8 @@ async function createOrder(product) {
     const order = r.data.order;
     lastCreated = { order, at: Date.now() };
     beep(1200, 0.08);
-    toast(`#${pad(order.ticket_no)} ${productName(order)} を登録しました`, {
-      action: '取り消す',
-      ms: 10_000,
-      onAction: () => moveTo([order], 'cancelled', () => {
-        if (lastCreated?.order.id === order.id) lastCreated = null;
-      }),
-    });
+    // No timed undo here: every order has its own 取消 button in the progress list on the left.
+    toast(`#${pad(order.ticket_no)} ${productName(order)} を登録しました`);
     setTimeout(render, 15_500); // fade the callout
   }
   render();

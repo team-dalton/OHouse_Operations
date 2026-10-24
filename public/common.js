@@ -278,7 +278,8 @@ export function startOverlay(title, { fullscreen = false } = {}) {
 }
 
 // --- Left pane: overall progress -----------------------------------------
-export function progressHTML(state, highlightStatus) {
+// `cancel`: show a 取消 button on every row (the 受付 screen cancels orders from here).
+export function progressHTML(state, highlightStatus, { cancel = false } = {}) {
   const { active, config, queue } = state;
   const rows = active
     .map((o) => {
@@ -287,11 +288,12 @@ export function progressHTML(state, highlightStatus) {
         (label, i) => `<span class="step ${i <= step ? 'done' : ''} ${i === step ? 'cur' : ''}">${label}</span>`
       ).join('<span class="bar"></span>');
       return `
-        <li class="${o.status === highlightStatus ? 'mine' : ''}">
+        <li class="${o.status === highlightStatus ? 'mine' : ''} ${cancel ? 'with-cancel' : ''}">
           <span class="tno">#${pad(o.ticket_no)}</span>
           <span class="chip p${esc(o.product)}">${esc(config.products[o.product]?.name ?? o.product)}</span>
           <span class="steps">${dots}</span>
           <span class="elapsed" data-since="${o.created_at}"></span>
+          ${cancel ? `<button class="row-cancel" data-action="cancel" data-id="${o.id}" type="button">取消</button>` : ''}
         </li>`;
     })
     .join('');
