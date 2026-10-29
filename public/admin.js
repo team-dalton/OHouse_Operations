@@ -286,7 +286,7 @@ function rebuildFromLog(events, day) {
   return [...orders.values()];
 }
 
-// --- Help requests (e.g. the cook's 「ヘルプを呼ぶ」) ---------------------------
+// --- Help requests (the cook's 「会計・先生を呼ぶ」) ---------------------------
 
 const helpEl = document.getElementById('help-alert');
 let helpOpen = [];
@@ -296,10 +296,10 @@ function renderHelp(list) {
   const fresh = list.some((h) => !helpOpen.some((o) => o.id === h.id));
   helpOpen = list;
   helpEl.hidden = list.length === 0;
-  document.title = list.length ? `🆘 ヘルプ (${list.length}) — Candy Cloud 管理` : 'Candy Cloud 管理';
+  document.title = list.length ? `📣 呼び出し (${list.length}) — Candy Cloud 管理` : 'Candy Cloud 管理';
   if (!list.length) return;
   helpEl.innerHTML = `
-    <h2>🆘 ヘルプ要請 (${list.length})
+    <h2>📣 会計・先生 呼び出し (${list.length})
       <button class="help-sound" data-action="sound" type="button">${soundOn ? '🔔 通知音オン' : '🔕 通知音をオンにする'}</button></h2>
     ${list.map((h) => `
       <div class="help-row">

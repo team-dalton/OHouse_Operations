@@ -262,11 +262,11 @@ function helpButton() {
   const mine = (state.help ?? []).find((h) => h.device === device);
   return mine
     ? `<div class="help-bar active">
-         <span>🆘 ヘルプ要請中… <small>管理者の対応を待っています</small></span>
-         <button class="btn secondary" data-action="help-cancel" data-help="${mine.id}" type="button">取消</button>
+         <span>📣 会計・先生を呼び出し中…</span>
+         <button class="help-cancel" data-action="help-cancel" data-help="${mine.id}" type="button">取消</button>
        </div>`
-    : `<div class="help-bar"><button class="btn help-btn wide" data-action="help" type="button" ${helpBusy ? 'disabled' : ''}>
-         🆘 ヘルプを呼ぶ</button></div>`;
+    : `<div class="help-bar"><button class="help-btn" data-action="help" type="button" ${helpBusy ? 'disabled' : ''}>
+         📣 会計・先生を呼ぶ</button></div>`;
 }
 
 // --- 運搬 (carrier) --------------------------------------------------------
@@ -352,7 +352,7 @@ async function callHelp() {
   render();
   const r = await post('/api/help', { device, role });
   helpBusy = false;
-  if (r.ok) toast('ヘルプを呼びました — 管理画面に通知されています');
+  if (r.ok) toast('会計・先生を呼びました');
   else toast(errorMessage(r), { kind: 'error' });
   render();
 }
