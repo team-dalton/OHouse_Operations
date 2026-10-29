@@ -20,7 +20,6 @@ const flashUntil = new Map();    // order id → timestamp; cards flash while ne
 let seen = null;                 // ids already shown in this role's action list
 let creating = false;
 let selectedProduct = null; // 受付: product tapped but not yet confirmed
-let mainChosen = false;      // 受付: main product (綿飴) tapped; now choosing its topping
 let makingSpare = false;
 let helpBusy = false;
 // Instant feedback for 完成 / お渡し完了: the card slides out right away (completing) and then stays hidden
@@ -108,52 +107,31 @@ function card(o, { label, big = false, selectable = false, showProduct = true } 
 function renderServer(list) {
   const { products } = state.config;
   const { pending, estWaitMin } = state.queue;
-  // Everything is on screen at once: the main product (綿飴) on the left with 「トッピングなし」 under it,
-  // the toppings on the right. The toppings and 「トッピングなし」 unlock only after 綿飴 is selected.
+  // Four combined buttons: 綿飴 on its own, or 綿飴 + one topping. One tap picks it, then confirm.
   const [main, ...toppings] = Object.keys(products);
   // Daily caps: 300 cotton candy in total, 100 per topping. A topping is also limited by the cotton candy left.
   const sales = state.sales ?? { total: 0, byProduct: {}, dailyCap: Infinity, toppingCap: Infinity };
   const mainLeft = Math.max(0, sales.dailyCap - sales.total);
   const left = (k) => (k === main ? mainLeft
     : Math.min(mainLeft, Math.max(0, sales.toppingCap - (sales.byProduct[k] ?? 0))));
-  const capLabel = (k) => (left(k) === 0 ? '本日分終了' : `残り ${left(k)}`);
-  if (mainLeft === 0) mainChosen = false;
-  if (selectedProduct && (left(selectedProduct) === 0 || !mainChosen)) selectedProduct = null;
+  if (selectedProduct && left(selectedProduct) === 0) selectedProduct = null;
   const split = (k) => products[k].name.split('/'); // "brand/日本語"
-  const locked = !mainChosen || creating;
-  const hint = (text) => (text ? `<small>${text}</small>` : '');
+  const ja = (k) => split(k)[1] || split(k)[0];
+  const brand = (k) => split(k)[0];
   // Prices (set in admin): 綿飴's price, plus each topping's extra charge. Hidden until set.
   const base = products[main].price;
   const total = (k) => (base == null ? null : k === main ? base : base + (products[k].price ?? 0));
-  const priceTag = (k) => {
-    if (k === main) return base == null ? '' : `<span class="pprice">${yen(base)}</span>`;
-    return products[k].price == null ? '' : `<span class="pprice">+${yen(products[k].price)}</span>`;
-  };
 
-  const option = (k, label, sub, cls = '') => `
-    <button class="product-btn p${k} ${cls} ${selectedProduct === k ? 'selected' : ''}" data-action="select" data-product="${k}"
-            ${left(k) === 0 || locked ? 'disabled' : ''}>
-      <span class="pname">${esc(label)}</span>${sub ? `<span class="psub">${esc(sub)}</span>` : ''}
-      ${priceTag(k)}
-      ${hint(left(k) === 0 ? '本日分終了' : !mainChosen || selectedProduct === k ? '' : 'タップして選択')}
-      ${left(k) === 0 ? '' : `<span class="pleft">${capLabel(k)}</span>`}
+  const combo = (k) => `
+    <button class="product-btn combo-btn ${selectedProduct === k ? 'selected' : ''}" data-action="select" data-product="${k}"
+            ${left(k) === 0 || creating ? 'disabled' : ''}>
+      <span class="pdots"><i style="background:var(--p${k})"></i></span>
+      <span class="pname">${k === main ? 'トッピングなし' : `${esc(brand(main))} <span class="nowrap">＋ ${esc(brand(k))}</span>`}</span>
+      <span class="psub">${esc(ja(main))}${k === main ? '' : ` <span class="nowrap">＋ ${esc(ja(k))}</span>`}</span>
+      ${total(k) == null ? '' : `<span class="pprice">${yen(total(k))}</span>`}
+      <span class="pleft">${left(k) === 0 ? '本日分終了' : `残り ${left(k)}`}</span>
     </button>`;
-
-  const [brand, ja] = split(main);
-  const buttons = `
-    <div class="order-main">
-      <button class="product-btn main-btn p${main} ${mainChosen ? 'selected' : ''}" data-action="main"
-              ${mainLeft === 0 || creating ? 'disabled' : ''}>
-        <span class="pname">${esc(brand)}</span>${ja ? `<span class="psub">${esc(ja)}</span>` : ''}
-        ${priceTag(main)}
-        ${hint(mainLeft === 0 ? '本日分終了' : '')}
-        ${mainLeft === 0 ? '' : `<span class="pleft">本日 ${sales.total} / ${sales.dailyCap}・残り ${mainLeft}</span>`}
-      </button>
-      ${option(main, 'トッピングなし', ja ? `${ja}のみ` : '', 'plain-btn')}
-    </div>
-    <div class="order-toppings">
-      ${toppings.map((k) => option(k, ...split(k))).join('')}
-    </div>`;
+  const buttons = [main, ...toppings].map(combo).join('');
 
   // Last step: confirm (or back out) before the order is registered.
   const toppingLabel = selectedProduct === main ? 'トッピングなし' : selectedProduct ? products[selectedProduct].name : '';
@@ -309,20 +287,14 @@ right.addEventListener('click', (e) => {
   const order = state.active.find((o) => o.id === id);
 
   switch (el.dataset.action) {
-    case 'main':
-      mainChosen = !mainChosen; // tap again to deselect
-      selectedProduct = null;
-      return render();
     case 'select':
-      selectedProduct = selectedProduct === el.dataset.product ? null : el.dataset.product;
+      selectedProduct = selectedProduct === el.dataset.product ? null : el.dataset.product; // tap again to deselect
       return render();
     case 'unselect':
       selectedProduct = null;
-      mainChosen = false;
       return render();
     case 'create':
       selectedProduct = null;
-      mainChosen = false;
       return createOrder(el.dataset.product);
     case 'advance':
       if (!order || completing.has(order.id)) return;

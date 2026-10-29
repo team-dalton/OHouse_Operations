@@ -9,6 +9,9 @@ export const STATUS_LABEL = {
 };
 export const FLOW = ['ordered', 'made', 'delivered', 'completed'];
 const STEP_LABEL = ['受付', '調理', '運搬', '完了'];
+// Once delivered the order is waiting at the counter (お渡しできます), so it already reads 完了;
+// it leaves the list when 受け渡し hands it over.
+const STEP_OF = { ordered: 0, made: 1, delivered: 3 };
 
 export const ROLE_LABEL = {
   server: '受付', handoff: '受け渡し', cook: '調理', carrier: '運搬', display: '呼び出し', admin: '管理',
@@ -300,12 +303,12 @@ export function progressHTML(state, highlightStatus, { cancel = false } = {}) {
   const rows = list
     .map((o) => {
       if (o.status === 'cancelled') return cancelledRowHTML(o, config, cancel);
-      const step = FLOW.indexOf(o.status);
+      const step = STEP_OF[o.status];
       const dots = STEP_LABEL.map(
         (label, i) => `<span class="step ${i <= step ? 'done' : ''} ${i === step ? 'cur' : ''}">${label}</span>`
       ).join('<span class="bar"></span>');
       return `
-        <li class="${o.status === highlightStatus ? 'mine' : ''} ${cancel ? 'with-cancel' : ''}">
+        <li class="${o.status === highlightStatus ? 'mine' : ''} ${o.status === 'delivered' ? 'complete' : ''} ${cancel ? 'with-cancel' : ''}">
           <span class="tno">#${pad(o.ticket_no)}</span>
           <span class="chip p${esc(o.product)}">${esc(config.products[o.product]?.name ?? o.product)}</span>
           <span class="steps">${dots}</span>
@@ -321,7 +324,7 @@ export function progressHTML(state, highlightStatus, { cancel = false } = {}) {
       <div class="counts">
         <span>受付 <b>${queue.ordered}</b></span>
         <span>調理済 <b>${queue.made}</b></span>
-        <span>到着 <b>${queue.delivered}</b></span>
+        <span>完了 <b>${queue.delivered}</b></span>
         <span>予備 <b>${(queue.sparesMade ?? 0) + (queue.sparesReady ?? 0)}</b></span>
       </div>
     </div>
