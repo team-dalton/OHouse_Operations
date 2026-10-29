@@ -23,6 +23,10 @@ let selectedProduct = null; // 受付: product tapped but not yet confirmed
 let mainChosen = false;      // 受付: main product (綿飴) tapped; now choosing its topping
 let makingSpare = false;
 let helpBusy = false;
+// Instant feedback for 完成 / お渡し完了: the card slides out right away (completing) and then stays hidden
+// (finished) without waiting for the server's next update, so it can't be tapped twice.
+const completing = new Set();
+const finished = new Set();
 let lastCreated = null;          // { order, at } for the server's "hand over ticket #" callout
 
 const yen = (n) => `¥${Number(n).toLocaleString('ja-JP')}`;
@@ -55,7 +59,9 @@ function render() {
   if (!state) return;
   setHTML(left, progressHTML(state, R.acts, { cancel: role === 'server' }));
 
-  const list = R.list();
+  const all = R.list();
+  for (const id of finished) if (!all.some((o) => o.id === id)) finished.delete(id); // server caught up
+  const list = all.filter((o) => !finished.has(o.id));
   // An order this screen was working on got cancelled elsewhere (e.g. at 受付): say so, loudly.
   if (seen && role !== 'server') {
     const gone = (state.recentCancelled ?? []).filter((o) => seen.has(o.id));
@@ -80,7 +86,7 @@ const isSpare = (o) => o.ticket_no == null;
 
 function card(o, { label, big = false, selectable = false, showProduct = true } = {}) {
   const isNew = (flashUntil.get(o.id) ?? 0) > Date.now();
-  const cls = ['card', big && 'big', isNew && 'new', selectable && 'selectable', selected.has(o.id) && 'selected',
+  const cls = ['card', big && 'big', isNew && 'new', completing.has(o.id) && 'completing', selectable && 'selectable', selected.has(o.id) && 'selected',
     isSpare(o) && 'spare'].filter(Boolean).join(' ');
   const attrs = selectable ? `data-action="toggle" data-id="${o.id}"` : '';
   return `
@@ -218,7 +224,7 @@ function handoffCard(o) {
     ? '<div class="give-topping none">トッピングなし</div>'
     : `<div class="give-topping p${esc(o.product)}"><i></i>＋ ${esc(ja ?? brand)}${ja ? ` <small>${esc(brand)}</small>` : ''}</div>`;
   return `
-    <div class="card big handoff-card ${isNew ? 'new' : ''}">
+    <div class="card big handoff-card ${isNew ? 'new' : ''} ${completing.has(o.id) ? 'completing' : ''}">
       <span class="tno">#${pad(o.ticket_no)}</span>
       <div class="give">
         <div class="give-main">${esc(mainJa ?? mainBrand)} <small>${esc(mainBrand)}</small></div>
@@ -319,7 +325,10 @@ right.addEventListener('click', (e) => {
       mainChosen = false;
       return createOrder(el.dataset.product);
     case 'advance':
-      return order && advance([order], R.to);
+      if (!order || completing.has(order.id)) return;
+      completing.add(order.id); // slide out now…
+      setTimeout(() => { completing.delete(order.id); finished.add(order.id); render(); }, 250); // …then hide
+      return advance([order], R.to);
     case 'toggle':
       selected.has(id) ? selected.delete(id) : selected.add(id);
       return render();
@@ -393,11 +402,16 @@ async function advance(orders, to) {
   if (!orders.length) return;
   const back = FLOW[FLOW.indexOf(to) - 1];
   const done = await moveTo(orders, to);
+  // Anything that didn't go through (e.g. another device got there first) comes back on screen.
+  for (const o of orders) {
+    if (!done.some((d) => d.id === o.id)) { completing.delete(o.id); finished.delete(o.id); }
+  }
+  render();
   if (done.length) {
     toast(`${done.map((o) => (isSpare(o) ? '予備' : `#${pad(o.ticket_no)}`)).join(' ')} → ${STATUS_LABEL[to]}`, {
       action: '取り消す',
       ms: 10_000,
-      onAction: () => moveTo(done, back),
+      onAction: () => { done.forEach((o) => finished.delete(o.id)); return moveTo(done, back); },
     });
   }
 }

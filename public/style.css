@@ -173,6 +173,13 @@ main.split {
 .card.big { padding: 24px; border: 2px solid var(--red); box-shadow: 0 10px 30px rgba(225, 24, 44, .12); }
 .card.big .tno { font-size: 60px; }
 .card.new { animation: flash 1s ease-in-out 3; }
+/* Tapped 完成 / お渡し完了: slide out at once so it can't be pressed twice */
+.card.completing { animation: card-done .25s ease-in forwards; pointer-events: none; }
+.card.completing .btn { background: var(--ink); }
+@keyframes card-done {
+  0% { background: var(--red-tint); }
+  100% { opacity: 0; transform: translateX(48px) scale(.97); }
+}
 .card.selectable { cursor: pointer; user-select: none; }
 .card.selected { border-color: var(--red); background: var(--red-tint); }
 .card .check {
