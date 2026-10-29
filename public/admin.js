@@ -36,10 +36,12 @@ function fillForm(cfg) {
   if (fields.dataset.keys !== keys.join()) {
     fields.dataset.keys = keys.join();
     fields.innerHTML = keys.map((k) => `
-      <label>商品${k} 名前 <input type="text" name="name${k}"></label>`).join('');
+      <label>商品${k} 名前 <input type="text" name="name${k}"></label>
+      <label>${k === keys[0] ? '綿飴の価格 (円)' : '　└ トッピング追加料金 (円)'} <input type="number" name="price${k}" min="0" placeholder="未設定"></label>`).join('');
   }
   for (const k of keys) {
     form[`name${k}`].value = cfg.products[k].name;
+    form[`price${k}`].value = cfg.products[k].price ?? '';
   }
   form.day.value = cfg.day;
   form.nextTicket.value = cfg.nextTicket;
@@ -53,7 +55,7 @@ form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const r = await post('/api/settings', {
     products: Object.fromEntries(Object.keys(state.config.products).map((k) =>
-      [k, { name: form[`name${k}`].value }])),
+      [k, { name: form[`name${k}`].value, price: form[`price${k}`].value }])),
     day: form.day.value,
     nextTicket: form.nextTicket.value,
     backlogCount: form.backlogCount.value,

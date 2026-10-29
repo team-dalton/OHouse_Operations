@@ -25,6 +25,7 @@ let makingSpare = false;
 let helpBusy = false;
 let lastCreated = null;          // { order, at } for the server's "hand over ticket #" callout
 
+const yen = (n) => `¥${Number(n).toLocaleString('ja-JP')}`;
 const productName = (o) => state.config.products[o.product]?.name ?? o.product;
 
 // Each role acts on orders in one status, and moves them to the next one.
@@ -114,11 +115,19 @@ function renderServer(list) {
   if (selectedProduct && (left(selectedProduct) === 0 || !mainChosen)) selectedProduct = null;
   const split = (k) => products[k].name.split('/'); // "brand/日本語"
   const locked = !mainChosen || creating;
+  // Prices (set in admin): 綿飴's price, plus each topping's extra charge. Hidden until set.
+  const base = products[main].price;
+  const total = (k) => (base == null ? null : k === main ? base : base + (products[k].price ?? 0));
+  const priceTag = (k) => {
+    if (k === main) return base == null ? '' : `<span class="pprice">${yen(base)}</span>`;
+    return products[k].price == null ? '' : `<span class="pprice">+${yen(products[k].price)}</span>`;
+  };
 
   const option = (k, label, sub, cls = '') => `
     <button class="product-btn p${k} ${cls} ${selectedProduct === k ? 'selected' : ''}" data-action="select" data-product="${k}"
             ${left(k) === 0 || locked ? 'disabled' : ''}>
       <span class="pname">${esc(label)}</span>${sub ? `<span class="psub">${esc(sub)}</span>` : ''}
+      ${priceTag(k)}
       <small>${left(k) === 0 ? '本日分終了' : !mainChosen ? '綿飴を先に選択' : selectedProduct === k ? '選択中' : 'タップして選択'}</small>
       ${left(k) === 0 ? '' : `<span class="pleft">${capLabel(k)}</span>`}
     </button>`;
@@ -129,6 +138,7 @@ function renderServer(list) {
       <button class="product-btn main-btn p${main} ${mainChosen ? 'selected' : ''}" data-action="main"
               ${mainLeft === 0 || creating ? 'disabled' : ''}>
         <span class="pname">${esc(brand)}</span>${ja ? `<span class="psub">${esc(ja)}</span>` : ''}
+        ${priceTag(main)}
         <small>${mainLeft === 0 ? '本日分終了' : mainChosen ? '選択中 — トッピングを選んでください' : 'まずタップ'}</small>
         ${mainLeft === 0 ? '' : `<span class="pleft">本日 ${sales.total} / ${sales.dailyCap}・残り ${mainLeft}</span>`}
       </button>
@@ -143,7 +153,8 @@ function renderServer(list) {
   const confirmBar = selectedProduct ? `
     <div class="confirm-bar">
       <div class="confirm-text"><span class="chip p${main}">${esc(split(main)[0])}</span> ＋
-        <span class="chip p${selectedProduct}">${esc(toppingLabel)}</span> を注文しますか？</div>
+        <span class="chip p${selectedProduct}">${esc(toppingLabel)}</span> を注文しますか？
+        ${total(selectedProduct) == null ? '' : `<div class="confirm-total">合計 <b>${yen(total(selectedProduct))}</b></div>`}</div>
       <div class="confirm-actions">
         <button class="btn secondary" data-action="unselect" type="button">やめる</button>
         <button class="btn big" data-action="create" data-product="${selectedProduct}" type="button" ${creating ? 'disabled' : ''}>注文を確定</button>
@@ -162,6 +173,7 @@ function renderServer(list) {
       <div class="callout ${faded ? 'fade' : ''}">
         食券<b>#${pad(order.ticket_no)}</b>を渡してください
         <div style="font-size:16px;opacity:.8">${esc(productName(order))}</div>
+        ${total(order.product) == null ? '' : `<div class="callout-price">お会計 ${yen(total(order.product))}</div>`}
         ${note}
       </div>`;
   }
@@ -190,8 +202,31 @@ function renderServer(list) {
 function renderHandoff(list) {
   setHTML(right, `
     <h2>お渡し待ち (${list.length})</h2>
-    ${list.map((o) => card(o, { label: 'お渡し完了', big: true })).join('')
+    ${list.map(handoffCard).join('')
       || '<p class="empty-note">運搬済みの注文が届くとここに表示されます</p>'}`);
+}
+
+// Spells out exactly what to hand over: the cotton candy, then the topping to add (or none).
+function handoffCard(o) {
+  const { products } = state.config;
+  const [main] = Object.keys(products);
+  const [mainBrand, mainJa] = products[main].name.split('/');
+  const [brand, ja] = (products[o.product]?.name ?? o.product).split('/');
+  const isNew = (flashUntil.get(o.id) ?? 0) > Date.now();
+  const topping = o.product === main
+    ? '<div class="give-topping none">トッピングなし</div>'
+    : `<div class="give-topping p${esc(o.product)}"><i></i>＋ ${esc(ja ?? brand)}${ja ? ` <small>${esc(brand)}</small>` : ''}</div>`;
+  return `
+    <div class="card big handoff-card ${isNew ? 'new' : ''}">
+      <span class="tno">#${pad(o.ticket_no)}</span>
+      <div class="give">
+        <div class="give-label">お渡しするもの</div>
+        <div class="give-main">${esc(mainJa ?? mainBrand)} <small>${esc(mainBrand)}</small></div>
+        ${topping}
+        <span class="give-wait">待ち <span class="elapsed" data-since="${o.created_at}"></span></span>
+      </div>
+      <button class="btn big" data-action="advance" data-id="${o.id}" ${busy.has(o.id) ? 'disabled' : ''}>お渡し完了</button>
+    </div>`;
 }
 
 // --- 調理 (cook) -----------------------------------------------------------

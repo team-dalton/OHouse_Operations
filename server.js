@@ -843,6 +843,12 @@ async function handleApi(req, res, url) {
       const p = body.products?.[key];
       if (!p) continue;
       if (typeof p.name === 'string' && p.name.trim()) cfg.products[key].name = p.name.trim().slice(0, 30);
+      // Price in yen: 綿飴's price for the first product, the extra charge for a topping. Blank = not set.
+      if ('price' in p) {
+        const yen = Number(p.price);
+        cfg.products[key].price = p.price === '' || p.price == null ? null
+          : Number.isInteger(yen) && yen >= 0 && yen < 100_000 ? yen : cfg.products[key].price;
+      }
     }
     const prev = { day: cfg.day, nextTicket: cfg.nextTicket };
     for (const key of ['day', 'nextTicket', 'backlogCount', 'backlogMinutes', 'dailyCap', 'toppingCap']) {

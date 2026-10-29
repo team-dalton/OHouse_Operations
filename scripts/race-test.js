@@ -226,6 +226,17 @@ try {
     assert.equal(c.updated_by, 'server-abcd');
   });
 
+  await test('prices can be set in admin and cleared again', async () => {
+    await post('/api/settings', { products: { A: { price: '300' }, B: { price: 100 } } });
+    let s = await fetch(`${BASE}/api/state`).then((r) => r.json());
+    assert.equal(s.config.products.A.price, 300);
+    assert.equal(s.config.products.B.price, 100);
+    assert.equal(s.config.products.C.price ?? null, null);
+    await post('/api/settings', { products: { B: { price: '' } } });
+    s = await fetch(`${BASE}/api/state`).then((r) => r.json());
+    assert.equal(s.config.products.B.price, null);
+  });
+
   await test('daily caps default to 300 cotton candy and 100 per topping', async () => {
     const s = await fetch(`${BASE}/api/state`).then((r) => r.json());
     assert.equal(s.config.dailyCap, 300);
