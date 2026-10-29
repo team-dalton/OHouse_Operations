@@ -226,12 +226,14 @@ try {
     assert.equal(c.updated_by, 'server-abcd');
   });
 
-  await test('prices can be set in admin and cleared again', async () => {
-    await post('/api/settings', { products: { A: { price: '300' }, B: { price: 100 } } });
+  await test('prices default to ¥100 + ¥50 per topping, and can be changed or cleared in admin', async () => {
     let s = await fetch(`${BASE}/api/state`).then((r) => r.json());
+    assert.deepEqual(Object.values(s.config.products).map((p) => p.price), [100, 50, 50, 50]);
+    await post('/api/settings', { products: { A: { price: '300' }, B: { price: 100 } } });
+    s = await fetch(`${BASE}/api/state`).then((r) => r.json());
     assert.equal(s.config.products.A.price, 300);
     assert.equal(s.config.products.B.price, 100);
-    assert.equal(s.config.products.C.price ?? null, null);
+    assert.equal(s.config.products.C.price, 50);
     await post('/api/settings', { products: { B: { price: '' } } });
     s = await fetch(`${BASE}/api/state`).then((r) => r.json());
     assert.equal(s.config.products.B.price, null);

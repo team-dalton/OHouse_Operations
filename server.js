@@ -119,10 +119,11 @@ const TS_COL = { made: 'made_at', delivered: 'delivered_at', completed: 'complet
 
 const DEFAULT_CONFIG = {
   products: {
-    A: { name: 'barbe à./綿飴' },
-    B: { name: 'Caramella al./ピュレレモン' },
-    C: { name: 'Gemma f./パチパチ' },
-    D: { name: 'Gommose/ピュレブドウ' },
+    // price: 綿飴 ¥100; each topping adds ¥50.
+    A: { name: 'barbe à./綿飴', price: 100 },
+    B: { name: 'Caramella al./ピュレレモン', price: 50 },
+    C: { name: 'Gemma f./パチパチ', price: 50 },
+    D: { name: 'Gommose/ピュレブドウ', price: 50 },
   },
   day: 1,
   nextTicket: 1,
