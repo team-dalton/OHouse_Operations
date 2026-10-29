@@ -10,7 +10,7 @@ let seen = null;
 
 // --- Live tracker (準備中) ----------------------------------------------------
 // Rows are kept and updated in place (not re-rendered), so CSS can animate an order moving to its next step.
-const STEPS = ['受付', '調理', '運搬', 'お渡し'];
+const STEPS = ['受付', '調理', '運搬'];
 const ACTIVE_STEP = { ordered: 1, made: 2 }; // 受付 is done once ordered; the active dot is where the order is now
 const trkList = document.getElementById('trk-list');
 const trkViewport = document.getElementById('trk-viewport');
@@ -38,15 +38,17 @@ function setStep(el, k) {
   });
 }
 
-function renderTracker(pending, products) {
+function renderTracker(pending, products, readyIds) {
   const ids = new Set(pending.map((o) => o.id));
 
-  // Ready or cancelled: slide out, then remove.
+  // Ready: fill the whole bar first, then slide out (it is now in お渡しできます). Cancelled: slide out at once.
   for (const [id, r] of rows) {
     if (ids.has(id) || r.leaving) continue;
     r.leaving = true;
-    r.el.classList.add('leaving');
-    setTimeout(() => { r.el.remove(); rows.delete(id); layout(); }, 700);
+    const ready = readyIds.has(id);
+    if (ready) setStep(r.el, STEPS.length);
+    setTimeout(() => r.el.classList.add('leaving'), ready ? 1000 : 0);
+    setTimeout(() => { r.el.remove(); rows.delete(id); layout(); }, ready ? 1700 : 700);
   }
 
   pending.forEach((o, i) => {
@@ -138,7 +140,7 @@ function render(state) {
         `<div class="num ${(flashUntil.get(o.id) ?? 0) > Date.now() ? 'new' : ''}">${pad(o.ticket_no)}</div>`).join('')}</div>`
     : `<p class="idle">お呼び出しする番号が<br>ここに表示されます</p>`);
 
-  renderTracker(pending, state.config.products);
+  renderTracker(pending, state.config.products, new Set(ready.map((o) => o.id)));
   document.getElementById('trk-count').textContent = pending.length ? `${pending.length}件` : '';
   document.getElementById('trk-wait').textContent = pending.length ? `待ち 約${estWaitMin}分` : '';
 

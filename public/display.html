@@ -59,12 +59,13 @@
     .trk-no { font-size: 4.6vh; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: -.03em; line-height: 1; }
     .trk-no small { display: flex; align-items: center; gap: .6vh; margin-top: .6vh; font-size: 1.5vh; font-weight: 700; color: var(--muted); letter-spacing: 0; white-space: nowrap; }
     .trk-no small::before { content: ""; width: 1.1vh; height: 1.1vh; border-radius: 50%; background: var(--dot, var(--muted)); flex: none; }
-    .trk-track { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); }
+    /* 3 steps: the line runs from the centre of the first column to the centre of the last */
+    .trk-track { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); }
     .trk-track::before, .trk-fill {
-      content: ""; position: absolute; left: 12.5%; top: 1.15vh; height: .55vh; border-radius: 999px;
+      content: ""; position: absolute; left: calc(100% / 6); top: 1.15vh; height: .55vh; border-radius: 999px;
     }
-    .trk-track::before { right: 12.5%; background: var(--line); }
-    .trk-fill { background: var(--red); width: calc(75% * var(--k, 0) / 3); transition: width 1s cubic-bezier(.2, .8, .2, 1); }
+    .trk-track::before { right: calc(100% / 6); background: var(--line); }
+    .trk-fill { background: var(--red); width: calc(100% * 2 / 3 * min(var(--k, 0), 2) / 2); transition: width 1s cubic-bezier(.2, .8, .2, 1); }
     .trk-step {
       position: relative; display: flex; flex-direction: column; align-items: center; gap: .7vh;
       font-size: 1.8vh; font-weight: 700; color: var(--muted); transition: color .4s;
