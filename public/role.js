@@ -129,7 +129,7 @@ function renderServer(list) {
             ${left(k) === 0 || locked ? 'disabled' : ''}>
       <span class="pname">${esc(label)}</span>${sub ? `<span class="psub">${esc(sub)}</span>` : ''}
       ${priceTag(k)}
-      ${hint(left(k) === 0 ? '本日分終了' : !mainChosen ? '' : selectedProduct === k ? '選択中' : 'タップして選択')}
+      ${hint(left(k) === 0 ? '本日分終了' : !mainChosen || selectedProduct === k ? '' : 'タップして選択')}
       ${left(k) === 0 ? '' : `<span class="pleft">${capLabel(k)}</span>`}
     </button>`;
 
@@ -140,7 +140,7 @@ function renderServer(list) {
               ${mainLeft === 0 || creating ? 'disabled' : ''}>
         <span class="pname">${esc(brand)}</span>${ja ? `<span class="psub">${esc(ja)}</span>` : ''}
         ${priceTag(main)}
-        ${hint(mainLeft === 0 ? '本日分終了' : mainChosen ? '選択中 — トッピングを選んでください' : '')}
+        ${hint(mainLeft === 0 ? '本日分終了' : '')}
         ${mainLeft === 0 ? '' : `<span class="pleft">本日 ${sales.total} / ${sales.dailyCap}・残り ${mainLeft}</span>`}
       </button>
       ${option(main, 'トッピングなし', ja ? `${ja}のみ` : '', 'plain-btn')}
