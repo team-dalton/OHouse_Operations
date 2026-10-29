@@ -115,6 +115,7 @@ function renderServer(list) {
   if (selectedProduct && (left(selectedProduct) === 0 || !mainChosen)) selectedProduct = null;
   const split = (k) => products[k].name.split('/'); // "brand/日本語"
   const locked = !mainChosen || creating;
+  const hint = (text) => (text ? `<small>${text}</small>` : '');
   // Prices (set in admin): 綿飴's price, plus each topping's extra charge. Hidden until set.
   const base = products[main].price;
   const total = (k) => (base == null ? null : k === main ? base : base + (products[k].price ?? 0));
@@ -128,7 +129,7 @@ function renderServer(list) {
             ${left(k) === 0 || locked ? 'disabled' : ''}>
       <span class="pname">${esc(label)}</span>${sub ? `<span class="psub">${esc(sub)}</span>` : ''}
       ${priceTag(k)}
-      <small>${left(k) === 0 ? '本日分終了' : !mainChosen ? '綿飴を先に選択' : selectedProduct === k ? '選択中' : 'タップして選択'}</small>
+      ${hint(left(k) === 0 ? '本日分終了' : !mainChosen ? '' : selectedProduct === k ? '選択中' : 'タップして選択')}
       ${left(k) === 0 ? '' : `<span class="pleft">${capLabel(k)}</span>`}
     </button>`;
 
@@ -139,7 +140,7 @@ function renderServer(list) {
               ${mainLeft === 0 || creating ? 'disabled' : ''}>
         <span class="pname">${esc(brand)}</span>${ja ? `<span class="psub">${esc(ja)}</span>` : ''}
         ${priceTag(main)}
-        <small>${mainLeft === 0 ? '本日分終了' : mainChosen ? '選択中 — トッピングを選んでください' : 'まずタップ'}</small>
+        ${hint(mainLeft === 0 ? '本日分終了' : mainChosen ? '選択中 — トッピングを選んでください' : '')}
         ${mainLeft === 0 ? '' : `<span class="pleft">本日 ${sales.total} / ${sales.dailyCap}・残り ${mainLeft}</span>`}
       </button>
       ${option(main, 'トッピングなし', ja ? `${ja}のみ` : '', 'plain-btn')}
@@ -171,7 +172,7 @@ function renderServer(list) {
     }[order.status] ?? '';
     callout = `
       <div class="callout ${faded ? 'fade' : ''}">
-        食券<b>#${pad(order.ticket_no)}</b>を渡してください
+        <b>#${pad(order.ticket_no)}</b>
         <div style="font-size:16px;opacity:.8">${esc(productName(order))}</div>
         ${total(order.product) == null ? '' : `<div class="callout-price">お会計 ${yen(total(order.product))}</div>`}
         ${note}
@@ -220,7 +221,6 @@ function handoffCard(o) {
     <div class="card big handoff-card ${isNew ? 'new' : ''}">
       <span class="tno">#${pad(o.ticket_no)}</span>
       <div class="give">
-        <div class="give-label">お渡しするもの</div>
         <div class="give-main">${esc(mainJa ?? mainBrand)} <small>${esc(mainBrand)}</small></div>
         ${topping}
         <span class="give-wait">待ち <span class="elapsed" data-since="${o.created_at}"></span></span>
@@ -233,7 +233,6 @@ function handoffCard(o) {
 // Toppings go on at the counter, so the cook only sees order numbers — every cotton candy is the same.
 function renderCook(list) {
   const [first, ...rest] = list;
-  const { sparesReady, sparesMade } = state.queue;
 
   // With orders waiting, 完成 is the button. With none waiting, the cook can make 予備 ahead of time.
   const spareSection = `
@@ -241,7 +240,6 @@ function renderCook(list) {
       <button class="btn big wide spare-btn" data-action="spare" ${makingSpare ? 'disabled' : ''}>
         予備を1つ作った (+1)
       </button>
-      <p>予備の在庫: 運搬待ち <b>${sparesMade}</b>個 / 受け取り口 <b>${sparesReady}</b>個</p>
     </div>`;
 
   setHTML(right, `
@@ -276,7 +274,6 @@ function renderCarrier(list) {
   setHTML(right, `
     <h2>運搬待ち (${list.length})${spareCount ? ` <small style="font-weight:400;color:var(--muted)">うち予備 ${spareCount}</small>` : ''}</h2>
     ${list.length ? `
-      <p style="color:var(--muted);margin:0 0 10px">タップで選択。選択なしの場合は全件が対象です。</p>
       ${list.map((o) => card(o, { selectable: true })).join('')}
       <button class="btn big wide" data-action="carry" ${anyBusy ? 'disabled' : ''}>${label}</button>`
     : '<p class="empty-note">運ぶ注文はありません</p>'}`);

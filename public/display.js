@@ -145,5 +145,5 @@ function render(state) {
   banner.className = backlog ? 'backlog' : 'normal';
   setHTML(banner, `<span>${backlog
     ? `ただいま混雑しています — 待ち時間 約${estWaitMin}分`
-    : '番号が表示されたら、食券をお持ちのうえ受け取り口へお越しください'}</span>`);
+    : ''}</span>`);
 }

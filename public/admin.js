@@ -20,8 +20,7 @@ connect({
   onState: (s) => {
     state = s;
     if (!formDirty) fillForm(s.config);
-    renderDevices(s);
-    renderSync(s.sync);
+    renderLinks(s);
     renderHelp(s.help ?? []);
     document.getElementById('logout').hidden = !s.auth;
     // Debounce the heavier queries.
@@ -71,11 +70,7 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
-function renderDevices(s) {
-  document.getElementById('devices').innerHTML =
-    s.devices
-      .map((d) => `<div class="dev"><span>${esc(ROLE_LABEL[d.role] ?? d.role)}</span><small>${esc(d.name)}</small></div>`)
-      .join('') || '<p class="empty-note">なし</p>';
+function renderLinks(s) {
   const base = s.lan?.[0] ?? location.origin;
   document.getElementById('links').innerHTML = ['server', 'handoff', 'cook', 'carrier', 'display']
     .map((p) => `<a href="/${p}" target="_blank">${ROLE_LABEL[p]}</a>`)
@@ -85,10 +80,6 @@ function renderDevices(s) {
 async function refresh() {
   const day = state.config.day;
   const [o, st] = await Promise.all([getJSON(`/api/orders?day=${day}`), getJSON(`/api/stats?day=${day}`)]);
-  if (sheetUrl === null) {
-    sheetUrl = (await getJSON('/api/backup-info')).sheetUrl || '';
-    renderSync();
-  }
   orders = o.orders;
   renderOrders();
   renderStats(st);
@@ -147,45 +138,6 @@ function renderStats(st) {
       <div class="hbar"><span>${h.hour}時</span><div style="width:${(h.n / maxHour) * 100}%"></div><span>${h.n}</span></div>`).join('')
       || '<p class="empty-note">まだ注文がありません</p>'}`;
 }
-
-// --- Google Sheets backup status -------------------------------------------
-
-let lastSync = null;
-let sheetUrl = null; // null = not fetched yet; '' = SHEETS_VIEW_URL not set
-
-function renderSync(sync = lastSync) {
-  lastSync = sync;
-  const el = document.getElementById('sync');
-  const link = sheetUrl
-    ? `<a class="btn wide sheet-link" href="${esc(sheetUrl)}" target="_blank" rel="noopener">スプレッドシートを開く ↗</a>`
-    : '';
-  if (!sync?.enabled) {
-    el.innerHTML = `<p class="empty-note">未設定です。README の「Google スプレッドシート バックアップ」の手順で
-      SHEETS_WEBHOOK_URL を設定すると、すべての注文が自動で記録されます。</p>${link}`;
-    return;
-  }
-  const healthy = !sync.lastError;
-  el.innerHTML = `
-    <div class="kv">
-      <span>状態</span><b class="${healthy ? 'sync-ok' : 'sync-bad'}">${healthy ? '● 正常' : '● 送信できていません'}</b>
-      <span>送信待ち</span><b>${sync.pending}件</b>
-      <span>最終送信</span><b>${sync.lastOkAt ? t(sync.lastOkAt) : '—'}</b>
-      ${sync.lastError ? `<span>エラー</span><b style="white-space:normal;font-weight:500">${esc(sync.lastError)}</b>` : ''}
-    </div>
-    <p class="hint" style="margin-top:10px">送信できない間も変更はサーバーに保存され、つながり次第まとめて送信されます。</p>
-    <button class="btn wide sheet-link" type="button" data-action="resend"
-      style="background:var(--ink);box-shadow:none">スプレッドシートに送信</button>
-    ${link}`;
-}
-
-// Re-sends every order, e.g. orders that existed before the backup was set up, or after switching to a new sheet.
-document.getElementById('sync').addEventListener('click', async (e) => {
-  if (!e.target.closest('[data-action=resend]')) return;
-  if (!confirm('すべての注文をスプレッドシートに送り直します。よろしいですか？')) return;
-  const r = await post('/api/backup-resend', {});
-  if (r.ok) toast(`${r.data.queued}件を送信待ちにしました`);
-  else toast(errorMessage(r), { kind: 'error' });
-});
 
 // --- Restore (import) ------------------------------------------------------
 
