@@ -194,7 +194,7 @@ export function errorMessage(r) {
   if (r.status === 0) return '通信エラー — 接続を確認してください';
   if (r.data.error === 'conflict') return '他の端末で処理済みです';
   if (r.data.error === 'daily_cap') return `本日の上限 (${r.data.cap}個) に達しました`;
-  if (r.data.error === 'topping_cap') return `このトッピングは本日の上限 (${r.data.cap}個) に達しました`;
+  if (r.data.error === 'product_cap') return `${r.data.name ?? 'この商品'}は本日の上限 (${r.data.cap}個) に達しました`;
   if (r.data.error === 'spare_has_no_order') return '予備には注文がありません';
   if (r.status === 404) return 'サーバーが古いバージョンです — npm start を再起動してください';
   return `エラー (${r.data.error || r.status})`;
@@ -295,28 +295,62 @@ function cancelledRowHTML(o, config, withCancelColumn) {
 }
 
 // `cancel`: show a 取消 button on every row (the 受付 screen cancels orders from here).
+// Orders in list order, but a bundle's orders (one customer's) are pulled together at the first one's place.
+// Returns arrays of orders; a bundle's array has .bundle set, a lone order's has .bundle == null.
+export function groupBundles(list) {
+  const groups = [];
+  const byBundle = new Map();
+  for (const o of list) {
+    if (o.bundle == null) {
+      groups.push(Object.assign([o], { bundle: null }));
+      continue;
+    }
+    let g = byBundle.get(o.bundle);
+    if (!g) {
+      g = Object.assign([], { bundle: o.bundle });
+      byBundle.set(o.bundle, g);
+      groups.push(g);
+    }
+    g.push(o);
+  }
+  return groups;
+}
+
 export function progressHTML(state, highlightStatus, { cancel = false } = {}) {
   const { active, config, queue } = state;
   // Recently cancelled orders stay in the list, greyed out, so everyone can see what happened.
   const list = [...active, ...(state.recentCancelled ?? [])]
     .sort((a, b) => a.created_at - b.created_at || a.id - b.id);
-  const rows = list
-    .map((o) => {
-      if (o.status === 'cancelled') return cancelledRowHTML(o, config, cancel);
-      const step = STEP_OF[o.status];
-      const dots = STEP_LABEL.map(
-        (label, i) => `<span class="step ${i <= step ? 'done' : ''} ${i === step ? 'cur' : ''}">${label}</span>`
-      ).join('<span class="bar"></span>');
-      return `
-        <li class="${o.status === highlightStatus ? 'mine' : ''} ${o.status === 'delivered' ? 'complete' : ''} ${cancel ? 'with-cancel' : ''}">
-          <span class="tno">#${pad(o.ticket_no)}</span>
-          <span class="chip p${esc(o.product)}">${esc(config.products[o.product]?.name ?? o.product)}</span>
-          <span class="steps">${dots}</span>
-          <span class="elapsed" data-since="${o.created_at}"></span>
-          ${cancel ? `<button class="row-cancel" data-action="cancel" data-id="${o.id}" type="button">取消</button>` : ''}
-        </li>`;
-    })
-    .join('');
+  const row = (o) => {
+    if (o.status === 'cancelled') return cancelledRowHTML(o, config, cancel);
+    const step = STEP_OF[o.status];
+    const dots = STEP_LABEL.map(
+      (label, i) => `<span class="step ${i <= step ? 'done' : ''} ${i === step ? 'cur' : ''}">${label}</span>`
+    ).join('<span class="bar"></span>');
+    return `
+      <li class="${o.status === highlightStatus ? 'mine' : ''} ${o.status === 'delivered' ? 'complete' : ''} ${cancel ? 'with-cancel' : ''}">
+        <span class="tno">#${pad(o.ticket_no)}</span>
+        <span class="chip p${esc(o.product)}">${esc(config.products[o.product]?.name ?? o.product)}</span>
+        <span class="steps">${dots}</span>
+        <span class="elapsed" data-since="${o.created_at}"></span>
+        ${cancel ? `<button class="row-cancel" data-action="cancel" data-id="${o.id}" type="button">取消</button>` : ''}
+      </li>`;
+  };
+  // One customer's several 食券 sit together in one box, headed by how far the whole order has got.
+  const rows = groupBundles(list).map((g) => {
+    if (g.bundle == null) return row(g[0]);
+    const all = (state.bundles?.[g.bundle] ?? g).filter((m) => m.status !== 'cancelled');
+    const done = all.filter((m) => m.status === 'delivered' || m.status === 'completed').length;
+    const handed = all.filter((m) => m.status === 'completed').length;
+    return `
+      <li class="bundle">
+        <div class="bundle-head">
+          <span>1名様分 <b>${all.length}</b>枚</span>
+          <span>完了 <b>${done}/${all.length}</b>${handed ? `・お渡し済 ${handed}` : ''}</span>
+        </div>
+        <ul class="bundle-rows">${g.map(row).join('')}</ul>
+      </li>`;
+  }).join('');
 
   return `
     <div class="pane-head">

@@ -112,6 +112,27 @@ function layout() {
 setInterval(() => { page++; layout(); }, 7000);
 window.addEventListener('resize', layout);
 
+// Low stock: the one product with the fewest left today, shown only once it is down to STOCK_ALERT.
+// A product is limited by its own cap (if set in admin) and by the day's total.
+const STOCK_ALERT = 20;
+const stockEl = document.getElementById('stock-low');
+
+function renderStock(sales, products) {
+  if (!sales || !Number.isFinite(sales.dailyCap)) { stockEl.hidden = true; return; }
+  const totalLeft = Math.max(0, sales.dailyCap - sales.total);
+  const left = (k) => products[k].soldOut ? 0
+    : products[k].cap == null ? totalLeft
+    : Math.min(totalLeft, Math.max(0, products[k].cap - (sales.byProduct[k] ?? 0)));
+  // Lowest first; on a tie the earlier product wins, so a shortage of the whole day shows as 綿飴.
+  const [k, n] = Object.keys(products).map((k) => [k, left(k)]).reduce((a, b) => (b[1] < a[1] ? b : a));
+  stockEl.hidden = n > STOCK_ALERT;
+  if (stockEl.hidden) return;
+  stockEl.className = `stock-low ${n === 0 ? 'out' : ''}`;
+  stockEl.style.setProperty('--dot', `var(--p${k})`);
+  const name = esc(products[k].name.split('/').pop()); // "brand/日本語" → 日本語
+  setHTML(stockEl, n === 0 ? `${name}：売り切れ` : `${name}：最後の<b>${n}</b>個`);
+}
+
 startOverlay('呼び出し画面', { fullscreen: true });
 connect({ role: 'display', name: 'display', onState: render });
 
@@ -143,6 +164,8 @@ function render(state) {
   renderTracker(pending, state.config.products, new Set(ready.map((o) => o.id)));
   document.getElementById('trk-count').textContent = pending.length ? `${pending.length}件` : '';
   document.getElementById('trk-wait').textContent = pending.length ? `待ち 約${estWaitMin}分` : '';
+
+  renderStock(state.sales, state.config.products);
 
   banner.className = backlog ? 'backlog' : 'normal';
   setHTML(banner, `<span>${backlog

@@ -67,7 +67,8 @@ const ORDERS_SCHEMA = `
     completed_at INTEGER,
     cancelled_at INTEGER,
     updated_by   TEXT,
-    is_spare     INTEGER NOT NULL DEFAULT 0 -- 1 if this candy was made as a spare
+    is_spare     INTEGER NOT NULL DEFAULT 0, -- 1 if this candy was made as a spare
+    bundle       INTEGER -- one customer's several orders share this (the first order's id); NULL if ordered alone
   )`;
 // Ticket numbers are reused (e.g. the admin restarts the counter at 1), so they are not unique in the table.
 // createOrder() only refuses a number that belongs to an order still in progress.
@@ -81,7 +82,7 @@ if (orderCols.length === 0) {
   db.exec(ORDERS_SCHEMA);
 } else if (!orderCols.some((c) => c.name === 'is_spare') || /UNIQUE/i.test(orderSql)) {
   const copy = ['id', 'day', 'ticket_no', 'product', 'status', 'created_at', 'made_at', 'delivered_at',
-    'completed_at', 'cancelled_at', 'updated_by', 'is_spare']
+    'completed_at', 'cancelled_at', 'updated_by', 'is_spare', 'bundle']
     .filter((c) => orderCols.some((col) => col.name === c)).join(', ');
   db.exec(`
     BEGIN;
@@ -90,6 +91,8 @@ if (orderCols.length === 0) {
     INSERT INTO orders (${copy}) SELECT ${copy} FROM orders_old;
     DROP TABLE orders_old;
     COMMIT;`);
+} else if (!orderCols.some((c) => c.name === 'bundle')) {
+  db.exec(`ALTER TABLE orders ADD COLUMN bundle INTEGER`); // before carts (several orders per customer)
 }
 db.exec(`CREATE INDEX IF NOT EXISTS orders_status ON orders (status, ticket_no)`);
 
@@ -119,30 +122,30 @@ const TS_COL = { made: 'made_at', delivered: 'delivered_at', completed: 'complet
 
 const DEFAULT_CONFIG = {
   products: {
-    // price: 綿飴 ¥100; each topping adds ¥50.
-    A: { name: 'barbe à./綿飴', price: 100 },
-    B: { name: 'Caramella al./ピュレレモン', price: 50 },
-    C: { name: 'Gemma f./パチパチ', price: 50 },
-    D: { name: 'Gommose/ピュレブドウ', price: 50 },
+    // price: 綿飴 ¥100; each topping adds ¥50. cap: how many of it sell per day (null = only the daily total).
+    A: { name: 'barbe à./綿飴', price: 100, cap: null },
+    B: { name: 'Caramella al./ピュレレモン', price: 50, cap: 100 },
+    C: { name: 'Gemma f./パチパチ', price: 50, cap: 100 },
+    D: { name: 'Gommose/ピュレブドウ', price: 50, cap: 100 },
   },
   day: 1,
   nextTicket: 1,
   backlogCount: 8,    // pending orders above this → backlog mode
   backlogMinutes: 10, // oldest pending order older than this → backlog mode
   dailyCap: 300,      // cotton candy per day (all orders, with or without a topping)
-  toppingCap: 100,    // per topping per day
 };
 
 function getConfig() {
   const row = db.prepare(`SELECT value FROM settings WHERE key = 'config'`).get();
   if (!row) return structuredClone(DEFAULT_CONFIG);
-  const saved = JSON.parse(row.value);
+  const { toppingCap, ...saved } = JSON.parse(row.value);
   // Merge products too, so a product added to DEFAULT_CONFIG appears in an existing database.
-  return {
-    ...DEFAULT_CONFIG,
-    ...saved,
-    products: mergeProducts(saved.products ?? {}),
-  };
+  const products = mergeProducts(saved.products ?? {});
+  // Before per-product caps, one toppingCap applied to every topping: carry it over to each of them.
+  if (Number.isInteger(toppingCap)) {
+    for (const k of Object.keys(products).slice(1)) if (saved.products?.[k]?.cap === undefined) products[k].cap = toppingCap;
+  }
+  return { ...DEFAULT_CONFIG, ...saved, products };
 }
 
 // Saved settings keep custom product names, but the old placeholder names (トッピングA…) are replaced by the
@@ -188,12 +191,11 @@ function createOrder(product, device) {
   const cfg = getConfig();
   const p = cfg.products[product];
   if (!p) throw new HttpError(400, 'unknown_product');
-  // Daily caps: 300 cotton candy in total, 100 of each topping (the first product is plain 綿飴, no topping).
+  // Daily caps: 300 cotton candy in total, and each product's own cap (set per product in admin).
   const sold = salesToday(cfg.day);
   if (sold.total >= cfg.dailyCap) throw new HttpError(409, 'daily_cap', { cap: cfg.dailyCap });
-  const [main] = Object.keys(cfg.products);
-  if (product !== main && (sold.byProduct[product] ?? 0) >= cfg.toppingCap) {
-    throw new HttpError(409, 'topping_cap', { cap: cfg.toppingCap });
+  if (p.cap != null && (sold.byProduct[product] ?? 0) >= p.cap) {
+    throw new HttpError(409, 'product_cap', { cap: p.cap, name: p.name });
   }
 
   // Node is single-threaded and DatabaseSync is synchronous, so this read-increment-write is atomic.
@@ -229,6 +231,37 @@ function createOrder(product, device) {
     .run(cfg.day, ticket, product, now, device);
   recordEvent(lastInsertRowid, null, 'ordered', device, now);
   return getOrder(lastInsertRowid);
+}
+
+// One customer's purchase: several cotton candies at once, one order (and number) each. The caps are checked
+// for the whole purchase first and it runs in one transaction, so it is all or nothing; the numbers come out
+// consecutive (unless one is still in use).
+function createOrders(products, device) {
+  const cfg = getConfig();
+  if (!products.length || products.length > 50) throw new HttpError(400, 'bad_items');
+  if (products.some((p) => !cfg.products[p])) throw new HttpError(400, 'unknown_product');
+  const sold = salesToday(cfg.day);
+  if (sold.total + products.length > cfg.dailyCap) throw new HttpError(409, 'daily_cap', { cap: cfg.dailyCap });
+  for (const p of new Set(products)) {
+    const n = products.filter((x) => x === p).length;
+    const { cap, name } = cfg.products[p];
+    if (cap != null && (sold.byProduct[p] ?? 0) + n > cap) throw new HttpError(409, 'product_cap', { cap, name });
+  }
+  db.exec('BEGIN');
+  try {
+    let orders = products.map((p) => createOrder(p, device));
+    // Several orders: tie them together so every screen shows them as one customer's bundle.
+    if (orders.length > 1) {
+      const tag = db.prepare(`UPDATE orders SET bundle = ? WHERE id = ?`);
+      for (const o of orders) tag.run(orders[0].id, o.id);
+      orders = orders.map((o) => getOrder(o.id));
+    }
+    db.exec('COMMIT');
+    return orders;
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
 }
 
 // Admin "reset this day": the day's orders leave the stats and order list and the ticket counter restarts.
@@ -399,6 +432,11 @@ function snapshot() {
   const recentCompleted = db
     .prepare(`SELECT * FROM orders WHERE status = 'completed' ORDER BY completed_at DESC LIMIT 8`)
     .all();
+  // Every member of each bundle still in progress (handed over and cancelled ones too), so screens can show
+  // the whole customer's order: e.g. "#012 is still being made" next to the ones already at the counter.
+  const bundleMembers = db.prepare(`SELECT id, ticket_no, product, status FROM orders WHERE bundle = ? ORDER BY id`);
+  const bundles = Object.fromEntries([...new Set(active.map((o) => o.bundle).filter((b) => b != null))]
+    .map((b) => [b, bundleMembers.all(b)]));
   return {
     now,
     boot: BOOT_ID,
@@ -408,6 +446,7 @@ function snapshot() {
     recentCancelled,
     spares,
     recentCompleted,
+    bundles,
     queue: {
       ...queueInfo(active, cfg, now),
       sparesMade: spares.filter((s) => s.status === 'made').length,           // at the cook / being carried
@@ -416,7 +455,7 @@ function snapshot() {
     devices: [...clients.values()].map(({ role, name, since }) => ({ role, name, since })),
     lan: lanUrls(),
     sync: syncInfo(),
-    sales: { ...salesToday(cfg.day), dailyCap: cfg.dailyCap, toppingCap: cfg.toppingCap },
+    sales: { ...salesToday(cfg.day), dailyCap: cfg.dailyCap }, // each product's own cap is in config.products
     help: helpRequests,
     auth: Boolean(PASSCODE),
   };
@@ -567,7 +606,7 @@ function syncInfo() {
 // ---------------------------------------------------------------------------
 
 const ORDER_COLS = ['id', 'day', 'ticket_no', 'product', 'status', 'created_at', 'made_at',
-  'delivered_at', 'completed_at', 'cancelled_at', 'updated_by', 'is_spare'];
+  'delivered_at', 'completed_at', 'cancelled_at', 'updated_by', 'is_spare', 'bundle'];
 
 // Accepts epoch milliseconds (the sheet) or ISO dates (the CSV export).
 function toMs(v, field, line) {
@@ -603,6 +642,7 @@ function importOrders(rows, mode) {
       toMs(r.cancelled_at, 'cancelled_at', line),
       String(r.updated_by ?? '').trim() || 'import',
       Number(r.is_spare) === 1 ? 1 : 0,
+      Number(r.bundle) > 0 ? Number(r.bundle) : null, // missing in older exports and the sheet
     ];
   });
 
@@ -768,6 +808,12 @@ async function handleApi(req, res, url) {
 
   if (req.method === 'POST' && pathname === '/api/orders') {
     const body = await readBody(req);
+    // { products: [...] } is one customer's whole purchase (受付); { product } is a single order.
+    if (Array.isArray(body.products)) {
+      const orders = createOrders(body.products.map(String), deviceOf(body));
+      broadcast();
+      return json(res, 201, { orders });
+    }
     const order = createOrder(String(body.product), deviceOf(body));
     broadcast();
     return json(res, 201, { order });
@@ -850,9 +896,15 @@ async function handleApi(req, res, url) {
         cfg.products[key].price = p.price === '' || p.price == null ? null
           : Number.isInteger(yen) && yen >= 0 && yen < 100_000 ? yen : cfg.products[key].price;
       }
+      // How many of this product sell per day. Blank = no limit of its own (only the daily total).
+      if ('cap' in p) {
+        const n = Number(p.cap);
+        cfg.products[key].cap = p.cap === '' || p.cap == null ? null
+          : Number.isInteger(n) && n >= 0 && n < 100_000 ? n : cfg.products[key].cap;
+      }
     }
     const prev = { day: cfg.day, nextTicket: cfg.nextTicket };
-    for (const key of ['day', 'nextTicket', 'backlogCount', 'backlogMinutes', 'dailyCap', 'toppingCap']) {
+    for (const key of ['day', 'nextTicket', 'backlogCount', 'backlogMinutes', 'dailyCap']) {
       const v = Number(body[key]);
       if (Number.isInteger(v) && v >= 0 && v < 100_000) cfg[key] = v;
     }

@@ -17,6 +17,16 @@
     .tv-head .sub { font-size: 2.4vh; color: var(--muted); font-weight: 700; letter-spacing: .1em; }
     .tv-head .clock { margin-left: auto; font-size: 4vh; font-weight: 800; font-variant-numeric: tabular-nums; }
     .tv-head .conn { font-size: 1.5vh; }
+    /* Low stock: only the product with the fewest left, once it is down to 20 */
+    .stock-low {
+      margin-left: auto; display: flex; align-items: center; gap: 1vh; font-size: 2.6vh; font-weight: 800; white-space: nowrap;
+      background: var(--red-tint); color: var(--red); padding: 1vh 2.2vh; border-radius: 999px;
+    }
+    .stock-low::before { content: ""; width: 1.4vh; height: 1.4vh; border-radius: 50%; background: var(--dot, var(--red)); }
+    .stock-low b { font-size: 3.4vh; font-weight: 900; font-variant-numeric: tabular-nums; }
+    .stock-low[hidden] { display: none; }
+    .stock-low.out { background: var(--ink); color: #fff; }
+    .stock-low:not([hidden]) + .clock { margin-left: 2vw; }
 
     .tv { display: grid; grid-template-columns: 1fr 1.15fr; gap: 2vw; padding: 0 3vw; height: 74vh; }
     .tv section { border-radius: 3.2vh; padding: 3vh 2.4vw; overflow: hidden; display: flex; flex-direction: column; }
@@ -118,6 +128,7 @@
     <img src="/logo.jpg" alt="Candy Cloud">
     <h1>Candy <em>Cloud</em></h1>
     <span id="conn" class="conn bad">●</span>
+    <span class="stock-low" id="stock-low" hidden></span>
     <span class="clock" id="clock"></span>
   </header>
   <main class="tv">

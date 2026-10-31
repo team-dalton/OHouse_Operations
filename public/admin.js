@@ -36,31 +36,31 @@ function fillForm(cfg) {
     fields.dataset.keys = keys.join();
     fields.innerHTML = keys.map((k) => `
       <label>商品${k} 名前 <input type="text" name="name${k}"></label>
-      <label>${k === keys[0] ? '綿飴の価格 (円)' : '　└ トッピング追加料金 (円)'} <input type="number" name="price${k}" min="0" placeholder="未設定"></label>`).join('');
+      <label>${k === keys[0] ? '綿飴の価格 (円)' : '　└ トッピング追加料金 (円)'} <input type="number" name="price${k}" min="0" placeholder="未設定"></label>
+      <label>　└ 1日の販売数 (個) <input type="number" name="cap${k}" min="0" placeholder="制限なし"></label>`).join('');
   }
   for (const k of keys) {
     form[`name${k}`].value = cfg.products[k].name;
     form[`price${k}`].value = cfg.products[k].price ?? '';
+    form[`cap${k}`].value = cfg.products[k].cap ?? '';
   }
   form.day.value = cfg.day;
   form.nextTicket.value = cfg.nextTicket;
   form.backlogCount.value = cfg.backlogCount;
   form.backlogMinutes.value = cfg.backlogMinutes;
   form.dailyCap.value = cfg.dailyCap;
-  form.toppingCap.value = cfg.toppingCap;
 }
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const r = await post('/api/settings', {
     products: Object.fromEntries(Object.keys(state.config.products).map((k) =>
-      [k, { name: form[`name${k}`].value, price: form[`price${k}`].value }])),
+      [k, { name: form[`name${k}`].value, price: form[`price${k}`].value, cap: form[`cap${k}`].value }])),
     day: form.day.value,
     nextTicket: form.nextTicket.value,
     backlogCount: form.backlogCount.value,
     backlogMinutes: form.backlogMinutes.value,
     dailyCap: form.dailyCap.value,
-    toppingCap: form.toppingCap.value,
   });
   if (r.ok) {
     formDirty = false;
@@ -123,8 +123,8 @@ function renderStats(st) {
   statsEl.innerHTML = `
     <div class="kv">
       <span>合計 (上限)</span><b>${Object.keys(products).reduce((n, k) => n + sold(k), 0)} / ${state.config.dailyCap}</b>
-      ${Object.entries(products).map(([k, p], i) =>
-        `<span>${esc(p.name)}</span><b>${sold(k)}${i > 0 ? ` / ${state.config.toppingCap}` : ''}</b>`).join('')}
+      ${Object.entries(products).map(([k, p]) =>
+        `<span>${esc(p.name)}</span><b>${sold(k)}${p.cap != null ? ` / ${p.cap}` : ''}</b>`).join('')}
       <span>注文完了</span><b>${count((r) => r.status === 'completed')}</b>
       <span>取消</span><b>${count((r) => r.product && r.status === 'cancelled')}</b>
       <span>予備 作成 / 使用</span><b>${st.spares.made} / ${st.spares.used}</b>

@@ -1,6 +1,6 @@
 // One script for the three staff screens. Left pane is shared; right pane depends on the role.
 import {
-  FLOW, ROLE_LABEL, STATUS_LABEL, beep, connect, deviceName, errorMessage, esc, pad, post,
+  FLOW, ROLE_LABEL, STATUS_LABEL, beep, connect, deviceName, errorMessage, esc, groupBundles, pad, post,
   progressHTML, setHTML, startElapsedTicker, startOverlay, toast, transition,
 } from './common.js';
 
@@ -19,14 +19,14 @@ const selected = new Set();      // carrier multi-select
 const flashUntil = new Map();    // order id → timestamp; cards flash while new
 let seen = null;                 // ids already shown in this role's action list
 let creating = false;
-let selectedProduct = null; // 受付: product tapped but not yet confirmed
+let cart = {}; // 受付: product → how many, for the customer at the counter; not yet confirmed
 let makingSpare = false;
 let helpBusy = false;
 // Instant feedback for 完成 / お渡し完了: the card slides out right away (completing) and then stays hidden
 // (finished) without waiting for the server's next update, so it can't be tapped twice.
 const completing = new Set();
 const finished = new Set();
-let lastCreated = null;          // { order, at } for the server's "hand over ticket #" callout
+let lastCreated = null;          // { orders, at } for the server's "hand over ticket #" callout
 
 const yen = (n) => `¥${Number(n).toLocaleString('ja-JP')}`;
 const productName = (o) => state.config.products[o.product]?.name ?? o.product;
@@ -95,6 +95,7 @@ function card(o, { label, big = false, selectable = false, showProduct = true } 
       <div class="meta">
         ${isSpare(o) ? '<span class="chip spare">注文なし</span>'
           : showProduct ? `<span class="chip p${esc(o.product)}">${esc(productName(o))}</span>` : ''}
+        ${bundleTag(o)}
         <span>${isSpare(o) ? '作成から' : '待ち'}
           <span class="elapsed" data-since="${isSpare(o) ? o.made_at : o.created_at}"></span></span>
       </div>
@@ -103,62 +104,107 @@ function card(o, { label, big = false, selectable = false, showProduct = true } 
     </div>`;
 }
 
+// One customer's several orders: "まとめ 2/4" = the 2nd of that customer's 4 食券.
+function bundleMembers(o) {
+  return (state.bundles?.[o.bundle] ?? []).filter((m) => m.status !== 'cancelled');
+}
+function bundleTag(o) {
+  if (o.bundle == null) return '';
+  const all = bundleMembers(o);
+  const i = all.findIndex((m) => m.id === o.id);
+  return all.length > 1 && i >= 0 ? `<span class="bundle-tag">まとめ ${i + 1}/${all.length}</span>` : '';
+}
+
 // --- 受付・受渡 (server) ----------------------------------------------------
 function renderServer(list) {
   const { products } = state.config;
   const { pending, estWaitMin } = state.queue;
-  // Four combined buttons: 綿飴 on its own, or 綿飴 + one topping. One tap picks it, then confirm.
-  const [main, ...toppings] = Object.keys(products);
-  // Daily caps: 300 cotton candy in total, 100 per topping. A topping is also limited by the cotton candy left.
-  const sales = state.sales ?? { total: 0, byProduct: {}, dailyCap: Infinity, toppingCap: Infinity };
+  // Four combined buttons: 綿飴 on its own, or 綿飴 + one topping. Each tap adds one to the customer's cart;
+  // the cart below can be changed (− / ＋, やめる) until 注文を確定 registers it all at once.
+  const keys = Object.keys(products);
+  const [main] = keys;
+  // Daily caps: 300 cotton candy in total, and each product's own cap (set in admin; none = only the total).
+  const sales = state.sales ?? { total: 0, byProduct: {}, dailyCap: Infinity };
   const mainLeft = Math.max(0, sales.dailyCap - sales.total);
-  const left = (k) => (k === main ? mainLeft
-    : Math.min(mainLeft, Math.max(0, sales.toppingCap - (sales.byProduct[k] ?? 0))));
-  if (selectedProduct && left(selectedProduct) === 0) selectedProduct = null;
+  const ownLeft = (k) => (products[k].cap == null ? Infinity : Math.max(0, products[k].cap - (sales.byProduct[k] ?? 0)));
+  const left = (k) => Math.min(mainLeft, ownLeft(k));
+  const count = () => Object.values(cart).reduce((a, n) => a + n, 0);
+  // How many more of k this customer can add, after what is already in the cart.
+  const room = (k) => Math.min(mainLeft - count(), ownLeft(k) - (cart[k] ?? 0));
+  // Sold out meanwhile (another 受付): trim the cart to what is left.
+  for (const k of keys) {
+    if (room(k) < 0) cart[k] += room(k);
+    if (!(cart[k] > 0)) delete cart[k];
+  }
   const split = (k) => products[k].name.split('/'); // "brand/日本語"
   const ja = (k) => split(k)[1] || split(k)[0];
   const brand = (k) => split(k)[0];
   // Prices (set in admin): 綿飴's price, plus each topping's extra charge. Hidden until set.
   const base = products[main].price;
   const total = (k) => (base == null ? null : k === main ? base : base + (products[k].price ?? 0));
+  const sum = (ks) => (base == null ? null : ks.reduce((a, k) => a + total(k), 0));
+  const label = (k) => (k === main ? 'トッピングなし' : ja(k)); // short, so a cart line fits on a phone
 
   const combo = (k) => `
-    <button class="product-btn combo-btn ${selectedProduct === k ? 'selected' : ''}" data-action="select" data-product="${k}"
-            ${left(k) === 0 || creating ? 'disabled' : ''}>
+    <button class="product-btn combo-btn ${cart[k] ? 'selected' : ''}" data-action="add" data-product="${k}"
+            ${room(k) <= 0 || creating ? 'disabled' : ''}>
+      ${cart[k] ? `<span class="pqty">×${cart[k]}</span>` : ''}
       <span class="pdots"><i style="background:var(--p${k})"></i></span>
       <span class="pname">${k === main ? 'トッピングなし' : `${esc(brand(main))} <span class="nowrap">＋ ${esc(brand(k))}</span>`}</span>
       <span class="psub">${esc(ja(main))}${k === main ? '' : ` <span class="nowrap">＋ ${esc(ja(k))}</span>`}</span>
       ${total(k) == null ? '' : `<span class="pprice">${yen(total(k))}</span>`}
-      <span class="pleft">${left(k) === 0 ? '本日分終了' : `残り ${left(k)}`}</span>
+      ${left(k) === 0 ? '<span class="pleft">本日分終了</span>'
+        : products[k].cap == null ? '' : `<span class="pleft">残り ${left(k)}</span>`}
     </button>`;
-  const buttons = [main, ...toppings].map(combo).join('');
+  const buttons = keys.map(combo).join('');
+  // How much cotton candy is left today, out of the daily cap (e.g. 292 / 300). Toppings show their own 残り.
+  const stock = Number.isFinite(sales.dailyCap)
+    ? `<div class="stock-total ${mainLeft === 0 ? 'out' : ''}">本日の総数 <b>${mainLeft}</b> / ${sales.dailyCap}</div>`
+    : '';
 
-  // Last step: confirm (or back out) before the order is registered.
-  const toppingLabel = selectedProduct === main ? 'トッピングなし' : selectedProduct ? products[selectedProduct].name : '';
-  const confirmBar = selectedProduct ? `
+  // Last step: check the cart with the customer (fix it with − / ＋), then confirm or back out.
+  const items = keys.filter((k) => cart[k]);
+  const all = items.flatMap((k) => Array(cart[k]).fill(k));
+  const confirmBar = items.length ? `
     <div class="confirm-bar">
-      <div class="confirm-text"><span class="chip p${main}">${esc(split(main)[0])}</span> ＋
-        <span class="chip p${selectedProduct}">${esc(toppingLabel)}</span> を注文しますか？
-        ${total(selectedProduct) == null ? '' : `<div class="confirm-total">合計 <b>${yen(total(selectedProduct))}</b></div>`}</div>
+      <ul class="cart">${items.map((k) => `
+        <li>
+          <span class="chip p${k}">${esc(label(k))}</span>
+          ${total(k) == null ? '' : `<span class="cart-price">${yen(total(k) * cart[k])}</span>`}
+          <span class="stepper">
+            <button data-action="dec" data-product="${k}" type="button" ${creating ? 'disabled' : ''} aria-label="1つ減らす">−</button>
+            <b>${cart[k]}</b>
+            <button data-action="inc" data-product="${k}" type="button" ${room(k) <= 0 || creating ? 'disabled' : ''} aria-label="1つ増やす">＋</button>
+          </span>
+        </li>`).join('')}
+      </ul>
+      <div class="confirm-total">合計 <b>${all.length}</b>個${sum(all) == null ? '' : ` <b>${yen(sum(all))}</b>`}</div>
       <div class="confirm-actions">
-        <button class="btn secondary" data-action="unselect" type="button">やめる</button>
-        <button class="btn big" data-action="create" data-product="${selectedProduct}" type="button" ${creating ? 'disabled' : ''}>注文を確定</button>
+        <button class="btn secondary" data-action="clear" type="button">やめる</button>
+        <button class="btn big" data-action="create" type="button" ${creating ? 'disabled' : ''}>注文を確定</button>
       </div>
     </div>` : '';
 
   let callout = '';
   if (lastCreated) {
-    const { order } = lastCreated;
+    const { orders } = lastCreated;
     const faded = Date.now() - lastCreated.at > 15_000;
-    const note = {
-      delivered: '<div class="callout-note">予備を使用 — すぐにお渡しできます</div>',
-      made: '<div class="callout-note">予備を使用 — 運搬中です</div>',
-    }[order.status] ?? '';
+    // Spares: an order may already be at the counter or on its way.
+    const ready = orders.filter((o) => o.status === 'delivered').length;
+    const onWay = orders.filter((o) => o.status === 'made').length;
+    const note = [
+      ready && `予備を使用 — ${orders.length > 1 ? `${ready}個は` : ''}すぐにお渡しできます`,
+      onWay && `予備を使用 — ${orders.length > 1 ? `${onWay}個は` : ''}運搬中です`,
+    ].filter(Boolean).map((t) => `<div class="callout-note">${t}</div>`).join('');
+    const what = keys
+      .map((k) => [k, orders.filter((o) => o.product === k).length]).filter(([, n]) => n)
+      .map(([k, n]) => `<span class="nowrap">${esc(label(k))}${orders.length > 1 ? ` ×${n}` : ''}</span>`).join('・');
+    const price = sum(orders.map((o) => o.product).filter((k) => products[k]));
     callout = `
-      <div class="callout ${faded ? 'fade' : ''}">
-        <b>#${pad(order.ticket_no)}</b>
-        <div style="font-size:16px;opacity:.8">${esc(productName(order))}</div>
-        ${total(order.product) == null ? '' : `<div class="callout-price">お会計 ${yen(total(order.product))}</div>`}
+      <div class="callout ${faded ? 'fade' : ''} ${orders.length > 1 ? 'multi' : ''}">
+        <b>${orders.map((o) => `<span>#${pad(o.ticket_no)}</span>`).join(' ')}</b>
+        <div style="font-size:16px;opacity:.8">${what}</div>
+        ${price == null ? '' : `<div class="callout-price">お会計 ${yen(price)}</div>`}
         ${note}
       </div>`;
   }
@@ -177,6 +223,7 @@ function renderServer(list) {
         現在 ${pending}件待ち・約${estWaitMin}分</small></h2>
       ${spareInfo}
       <div class="product-buttons">${buttons}</div>
+      ${stock}
       ${confirmBar}
       ${confirmBar ? '' : callout}
     </div>`);
@@ -187,8 +234,27 @@ function renderServer(list) {
 function renderHandoff(list) {
   setHTML(right, `
     <h2>お渡し待ち (${list.length})</h2>
-    ${list.map(handoffCard).join('')
+    ${groupBundles(list).map((g) => (g.bundle == null ? handoffCard(g[0]) : handoffBundle(g))).join('')
       || '<p class="empty-note">運搬済みの注文が届くとここに表示されます</p>'}`);
+}
+
+// One customer's 食券 together, with the ones not at the counter yet named, so they are handed over as a set.
+function handoffBundle(g) {
+  const all = bundleMembers(g[0]);
+  const NOT_YET = { ordered: '調理待ち', made: '運搬中' };
+  const missing = all.filter((m) => NOT_YET[m.status]);
+  const handed = all.filter((m) => m.status === 'completed').length;
+  const status = missing.length
+    ? `<span class="bundle-wait">まだ ${missing.map((m) => `<span class="nowrap">#${pad(m.ticket_no)} ${NOT_YET[m.status]}</span>`).join('・')}</span>`
+    : '<span class="bundle-all">全部そろいました</span>';
+  return `
+    <div class="bundle-box">
+      <div class="bundle-head">
+        <span>1名様分 <b>${all.length}</b>枚${handed ? `<small>・お渡し済 ${handed}</small>` : ''}</span>
+        ${status}
+      </div>
+      ${g.map(handoffCard).join('')}
+    </div>`;
 }
 
 // Spells out exactly what to hand over: the cotton candy, then the topping to add (or none).
@@ -275,7 +341,10 @@ left.addEventListener('click', async (e) => {
   if (!order || !confirm(`#${pad(order.ticket_no)} ${productName(order)} を取り消しますか？`)) return;
   const done = await moveTo([order], 'cancelled');
   if (done.length) {
-    if (lastCreated?.order.id === order.id) lastCreated = null;
+    if (lastCreated) {
+      lastCreated.orders = lastCreated.orders.filter((o) => o.id !== order.id);
+      if (!lastCreated.orders.length) lastCreated = null;
+    }
     toast(`#${pad(order.ticket_no)} を取り消しました`);
   }
 });
@@ -287,15 +356,21 @@ right.addEventListener('click', (e) => {
   const order = state.active.find((o) => o.id === id);
 
   switch (el.dataset.action) {
-    case 'select':
-      selectedProduct = selectedProduct === el.dataset.product ? null : el.dataset.product; // tap again to deselect
+    case 'add': // a product button: one more of it (render() disables it when the caps are reached)
+    case 'inc':
+      cart[el.dataset.product] = (cart[el.dataset.product] ?? 0) + 1;
       return render();
-    case 'unselect':
-      selectedProduct = null;
+    case 'dec':
+      if (!(--cart[el.dataset.product] > 0)) delete cart[el.dataset.product];
       return render();
-    case 'create':
-      selectedProduct = null;
-      return createOrder(el.dataset.product);
+    case 'clear':
+      cart = {};
+      return render();
+    case 'create': {
+      // The cart is kept until the server accepts it, so a failed request (e.g. sold out) can be fixed and retried.
+      const products = Object.keys(state.config.products).flatMap((k) => Array(cart[k] ?? 0).fill(k));
+      return createOrders(products);
+    }
     case 'advance':
       if (!order || completing.has(order.id)) return;
       completing.add(order.id); // slide out now…
@@ -352,19 +427,24 @@ async function makeSpare() {
   render();
 }
 
-async function createOrder(product) {
+// One customer's whole cart: one order (and number) per cotton candy, registered together.
+async function createOrders(products) {
+  if (!products.length) return;
   creating = true;
   render();
-  const r = await post('/api/orders', { product, device });
+  const r = await post('/api/orders', { products, device });
   creating = false;
   if (!r.ok) {
     toast(errorMessage(r), { kind: 'error' });
   } else {
-    const order = r.data.order;
-    lastCreated = { order, at: Date.now() };
+    const { orders } = r.data;
+    cart = {};
+    lastCreated = { orders, at: Date.now() };
     beep(1200, 0.08);
     // No timed undo here: every order has its own 取消 button in the progress list on the left.
-    toast(`#${pad(order.ticket_no)} ${productName(order)} を登録しました`);
+    toast(orders.length === 1
+      ? `#${pad(orders[0].ticket_no)} ${productName(orders[0])} を登録しました`
+      : `${orders.map((o) => `#${pad(o.ticket_no)}`).join(' ')} (${orders.length}個) を登録しました`);
     setTimeout(render, 15_500); // fade the callout
   }
   render();

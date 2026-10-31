@@ -239,28 +239,35 @@ try {
     assert.equal(s.config.products.B.price, null);
   });
 
-  await test('daily caps default to 300 cotton candy and 100 per topping', async () => {
+  await test('daily caps default to 300 cotton candy and 100 per topping; 綿飴 has no cap of its own', async () => {
     const s = await fetch(`${BASE}/api/state`).then((r) => r.json());
     assert.equal(s.config.dailyCap, 300);
-    assert.equal(s.config.toppingCap, 100);
+    assert.equal(s.config.products.A.cap, null);
+    for (const k of ['B', 'C', 'D']) assert.equal(s.config.products[k].cap, 100);
     assert.equal(s.sales.dailyCap, 300);
   });
 
-  await test('a topping stops at its cap; plain 綿飴 and other toppings still sell', async () => {
+  await test('a product stops at its own cap; the others still sell', async () => {
     const s = await fetch(`${BASE}/api/state`).then((r) => r.json());
     const soldB = s.sales.byProduct.B ?? 0;
-    await post('/api/settings', { toppingCap: soldB + 1 });
+    await post('/api/settings', { products: { B: { cap: soldB + 1 } } });
     assert.equal((await post('/api/orders', { product: 'B', device: 'server' })).status, 201);
     const over = await post('/api/orders', { product: 'B', device: 'server' });
     assert.equal(over.status, 409);
-    assert.equal(over.data.error, 'topping_cap');
+    assert.equal(over.data.error, 'product_cap');
     assert.equal((await post('/api/orders', { product: 'A', device: 'server' })).status, 201);
     assert.equal((await post('/api/orders', { product: 'C', device: 'server' })).status, 201);
+    // 綿飴 can have a cap too; blank removes it again.
+    const soldA = (await fetch(`${BASE}/api/state`).then((r) => r.json())).sales.byProduct.A;
+    await post('/api/settings', { products: { A: { cap: soldA } } });
+    assert.equal((await post('/api/orders', { product: 'A', device: 'server' })).data.error, 'product_cap');
+    await post('/api/settings', { products: { A: { cap: '' }, B: { cap: 100 } } });
+    assert.equal((await post('/api/orders', { product: 'A', device: 'server' })).status, 201);
   });
 
   await test('the cotton candy cap stops every order, with or without a topping', async () => {
     const s = await fetch(`${BASE}/api/state`).then((r) => r.json());
-    await post('/api/settings', { dailyCap: s.sales.total, toppingCap: 100 });
+    await post('/api/settings', { dailyCap: s.sales.total });
     for (const product of ['A', 'D']) {
       const r = await post('/api/orders', { product, device: 'server' });
       assert.equal(r.status, 409);
@@ -274,6 +281,25 @@ try {
     await post(`/api/orders/${o.id}/transition`, { from: 'ordered', to: 'cancelled', device: 'server' });
     assert.equal((await post('/api/orders', { product: 'A', device: 'server' })).status, 201);
     await post('/api/settings', { dailyCap: 300 });
+  });
+
+  await test('one customer\'s cart is all or nothing, with consecutive numbers', async () => {
+    const count = async () => (await fetch(`${BASE}/api/orders`).then((r) => r.json())).orders.length;
+    const s = await fetch(`${BASE}/api/state`).then((r) => r.json());
+    const before = await count();
+    // One topping over its cap → the whole cart is refused and nothing is registered.
+    await post('/api/settings', { products: { D: { cap: (s.sales.byProduct.D ?? 0) + 1 } } });
+    const over = await post('/api/orders', { products: ['A', 'A', 'D', 'D'], device: 'server' });
+    assert.equal(over.status, 409);
+    assert.equal(over.data.error, 'product_cap');
+    assert.equal(await count(), before);
+    await post('/api/settings', { products: { D: { cap: 100 } } });
+    const r = await post('/api/orders', { products: ['A', 'A', 'A', 'A', 'D'], device: 'server' });
+    assert.equal(r.status, 201);
+    const nos = r.data.orders.map((o) => o.ticket_no);
+    assert.deepEqual(r.data.orders.map((o) => o.product), ['A', 'A', 'A', 'A', 'D']);
+    assert.deepEqual(nos, nos.map((_, i) => nos[0] + i));
+    assert.equal((await post('/api/orders', { products: [], device: 'server' })).status, 400);
   });
 } finally {
   server.kill();
